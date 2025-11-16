@@ -60,6 +60,11 @@ output/
 
 .meridian/
 
+# Vibe widget cache
+.vibe_cache/
+
 
 
 /venv311/
+**/widgets/**
+/testdata/
