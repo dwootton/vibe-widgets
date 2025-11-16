@@ -50,4 +50,26 @@ def create(
     api_key: str | None = None,
     model: str = "claude-sonnet-4-5-20250929",
 ) -> VibeWidget:
-    return VibeWidget(description=description, df=df, api_key=api_key, model=model)
+    """
+    Create a VibeWidget visualization.
+    
+    Args:
+        description: Natural language description of the visualization
+        df: DataFrame to visualize
+        api_key: Anthropic API key (or set ANTHROPIC_API_KEY env var)
+        model: Claude model to use
+    
+    Returns:
+        VibeWidget instance
+    """
+    widget = VibeWidget(description=description, df=df, api_key=api_key, model=model)
+    
+    # Explicitly display the widget to ensure it renders in VS Code
+    try:
+        from IPython.display import display
+        display(widget)
+    except ImportError:
+        # If IPython is not available, just return the widget
+        pass
+    
+    return widget
