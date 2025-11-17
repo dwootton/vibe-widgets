@@ -76,7 +76,7 @@ class VibeWidget(anywidget.AnyWidget):
         # Step 1: Preprocess data to create rich profile
         data_profile = context 
         if isinstance(context, DataProfile):
-            enhanced_description = f"{description}\n\nData Profile: {data_profile.to_markdown()}"
+            enhanced_description = f"{description}\n\n======================\n\n CONTEXT::DATA_PROFILE:\n\n {data_profile.to_markdown()}"
         else:
             data_info = self._extract_data_info(df)
             enhanced_description = f"{description}\n\n======================\n\n CONTEXT::DATA_INFO:\n\n {data_info}"
@@ -407,7 +407,26 @@ def create(
             
             # First row is often headers
             if len(df_converted) > 0:
-                df_converted.columns = df_converted.iloc[0]
+                # Get header row and clean it up
+                header_row = df_converted.iloc[0]
+                # Convert to strings and handle empty/duplicate names
+                new_columns = []
+                seen = {}
+                for i, col in enumerate(header_row):
+                    # Convert to string, handle NaN/None
+                    col_str = str(col) if pd.notna(col) else f"Column_{i}"
+                    # Handle empty strings
+                    if not col_str or col_str.strip() == "":
+                        col_str = f"Column_{i}"
+                    # Handle duplicates by appending suffix
+                    if col_str in seen:
+                        seen[col_str] += 1
+                        col_str = f"{col_str}_{seen[col_str]}"
+                    else:
+                        seen[col_str] = 0
+                    new_columns.append(col_str)
+                
+                df_converted.columns = new_columns
                 df_converted = df_converted[1:]
                 df_converted = df_converted.reset_index(drop=True)
         else:

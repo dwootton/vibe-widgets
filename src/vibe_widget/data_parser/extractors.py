@@ -70,12 +70,25 @@ class DataExtractor(ABC):
         """Create column profile from pandas Series"""
         dtype = self._infer_dtype(series)
         
+        # Safe conversion to int, handling NaN and edge cases
+        def safe_int(value):
+            try:
+                if pd.isna(value):
+                    return 0
+                return int(float(value))
+            except (ValueError, TypeError):
+                return 0
+        
+        count_val = series.count()
+        missing_val = series.isna().sum()
+        unique_val = series.nunique()
+        
         profile = ColumnProfile(
             name=name,
             dtype=dtype,
-            count=int(series.count()),
-            missing_count=int(series.isna().sum()),
-            unique_count=int(series.nunique())
+            count=safe_int(count_val),
+            missing_count=safe_int(missing_val),
+            unique_count=safe_int(unique_val)
         )
         
         # Numeric analysis
@@ -134,7 +147,15 @@ class DataFrameExtractor(DataExtractor):
         
         # Analyze each column - ONLY structural properties
         for col in source.columns:
-            col_profile = self._analyze_column(source[col], str(col))
+            # Get the column as a Series - handle duplicate column names
+            col_data = source[col]
+            # If we get a DataFrame (due to duplicate names), take the first column
+            if isinstance(col_data, pd.DataFrame):
+                col_data = col_data.iloc[:, 0]
+            # Ensure we have a Series
+            if not isinstance(col_data, pd.Series):
+                continue
+            col_profile = self._analyze_column(col_data, str(col))
             profile.columns.append(col_profile)
         
         # Sample data for LLM to analyze
@@ -602,7 +623,26 @@ class PDFExtractor(DataExtractor):
         
         # First row is often headers
         if len(df) > 0:
-            df.columns = df.iloc[0]
+            # Get header row and clean it up
+            header_row = df.iloc[0]
+            # Convert to strings and handle empty/duplicate names
+            new_columns = []
+            seen = {}
+            for i, col in enumerate(header_row):
+                # Convert to string, handle NaN/None
+                col_str = str(col) if pd.notna(col) else f"Column_{i}"
+                # Handle empty strings
+                if not col_str or col_str.strip() == "":
+                    col_str = f"Column_{i}"
+                # Handle duplicates by appending suffix
+                if col_str in seen:
+                    seen[col_str] += 1
+                    col_str = f"{col_str}_{seen[col_str]}"
+                else:
+                    seen[col_str] = 0
+                new_columns.append(col_str)
+            
+            df.columns = new_columns
             df = df[1:]
             df = df.reset_index(drop=True)
         
