@@ -74,42 +74,12 @@ class VibeWidget(anywidget.AnyWidget):
         llm_provider = ClaudeProvider(api_key=api_key, model=model)
         
         # Step 1: Preprocess data to create rich profile
-        # if use_preprocessor:
-        #     # Handle case where context is already a DataProfile
-        #     if isinstance(context, DataProfile):
-        #         # Use the provided profile, but still need to extract from DataFrame
-        #         # to ensure we have the actual data structure
-        #         preprocessor = DataPreprocessor(api_key=api_key, model=model)
-        #         base_profile = preprocessor.process(
-        #             df,
-        #             augment_with_llm=False,  # Don't re-augment if profile provided
-        #             context=None
-        #         )
-        #         # Merge provided profile with extracted profile
-        #         data_profile = self._merge_profiles(context, base_profile)
-        #     else:
-        #         preprocessor = DataPreprocessor(api_key=api_key, model=model)
-        #         data_profile = preprocessor.process(
-        #             df, 
-        #             augment_with_llm=True,
-        #             context=context
-        #         )
-            
-        #     # Use the rich profile for widget generation
-        #     data_info = self._profile_to_info(data_profile)
-            
-        #     # Enhance user description with insights from profile
-        # else:
-        #     # Fallback to basic extraction
-        #     data_info = self._extract_data_info(df)
-        #     enhanced_description = description
-        #     data_profile = None
         data_profile = context 
         if isinstance(context, DataProfile):
             enhanced_description = f"{description}\n\nData Profile: {data_profile.to_markdown()}"
         else:
             data_info = self._extract_data_info(df)
-            enhanced_description = f"{description}\n\nData Info: {data_info}"
+            enhanced_description = f"{description}\n\n======================\n\n CONTEXT::DATA_INFO:\n\n {data_info}"
             data_profile = None
         
         print(enhanced_description)
@@ -324,11 +294,11 @@ def create(
     if isinstance(df, (str, Path)):
         from vibe_widget.data_parser.preprocessor import preprocess_data
         
-        # # If context is a DataProfile, use it directly and skip preprocessing
-        # if isinstance(context, DataProfile):
-        profile = context
-        # else:
-        #     profile = preprocess_data(df, api_key=api_key, context=context)
+        # If context is a DataProfile, use it directly and skip preprocessing
+        if isinstance(context, DataProfile):
+            profile = context
+        else:
+            profile = preprocess_data(df, api_key=api_key, context=context)
         
         # For now, we need to convert to DataFrame for the widget
         # This is a limitation we might want to address
@@ -409,11 +379,44 @@ def create(
                     format='%Y/%m/%d %H:%M:%S.%f'
                 )
                 df_converted = df_converted.drop(columns=['date', 'time'], errors='ignore')
+        elif profile.source_type == "pdf":
+            # PDF files need to be parsed - use the extractor logic
+            from vibe_widget.data_parser.extractors import PDFExtractor
+            try:
+                import camelot
+            except ImportError:
+                raise ImportError(
+                    "camelot-py required for PDF extraction. Install with: "
+                    "pip install 'camelot-py[base]' or 'camelot-py[cv]'"
+                )
+            
+            source_path = Path(df) if isinstance(df, str) else df
+            
+            # Extract tables from PDF
+            tables = camelot.read_pdf(str(source_path), pages='all', flavor='lattice')
+            
+            # If no tables found, try stream flavor
+            if len(tables) == 0:
+                tables = camelot.read_pdf(str(source_path), pages='all', flavor='stream')
+            
+            if len(tables) == 0:
+                raise ValueError(f"No tables found in PDF: {source_path}")
+            
+            # Use the first table (can be extended to handle multiple tables)
+            df_converted = tables[0].df
+            
+            # First row is often headers
+            if len(df_converted) > 0:
+                df_converted.columns = df_converted.iloc[0]
+                df_converted = df_converted[1:]
+                df_converted = df_converted.reset_index(drop=True)
         else:
             raise ValueError(f"Unsupported source type: {profile.source_type}")
         
         df = df_converted
-        df = df.sample(1000)
+        # Sample if DataFrame is large enough
+        if len(df) > 1000:
+            df = df.sample(1000)
     
     # Create widget
     widget = VibeWidget(
@@ -457,7 +460,7 @@ def analyze_data(
         save_to=save_to
     )
     
-    print(profile.to_markdown())
+    # print(profile.to_markdown())
     return profile
 
 

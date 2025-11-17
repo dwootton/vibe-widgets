@@ -53,6 +53,7 @@ CRITICAL AFM Requirements:
 7. Make it interactive and visually appealing
 8. Do NOT use React/ReactDOM - use vanilla JS or imported libraries only
 9. Do NOT wrap in markdown code fences
+10. DO NOT use 100vh for height - use a fixed height or 100%
 
 Example structure:
 ```
