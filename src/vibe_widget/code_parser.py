@@ -119,6 +119,12 @@ class CodeStreamParser:
         """Get all detected actions for the timeline."""
         return self.actions
     
+    def get_progress(self) -> float:
+        """Get code generation progress based on detected patterns (0.0 to 1.0)."""
+        total_patterns = len(self.PATTERNS)
+        detected_count = len(self.detected)
+        return min(1.0, detected_count / total_patterns)
+    
     def get_completion_summary(self) -> Dict[str, any]:
         """Get summary of detected code features."""
         return {
