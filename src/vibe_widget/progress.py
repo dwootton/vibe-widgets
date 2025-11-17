@@ -13,8 +13,8 @@ class ProgressWidget(anywidget.AnyWidget):
             font-family: inherit;
             font-size: 0.9em;
             line-height: 1.5;
-            background-color: #000;
-            color: #fff;
+            background-color: #181818;
+            color: #f5f5f5;
             padding: 10px;
             border-radius: 4px;
           }

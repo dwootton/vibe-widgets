@@ -1,10 +1,14 @@
 import os
 import re
+from pathlib import Path
 from typing import Any, Callable
 
 from anthropic import Anthropic
+from dotenv import load_dotenv
 
 from vibe_widget.llm.base import LLMProvider
+
+load_dotenv()
 
 
 class ClaudeProvider(LLMProvider):
@@ -51,6 +55,64 @@ class ClaudeProvider(LLMProvider):
         code = re.sub(r'```(?:javascript|jsx?|typescript|tsx?)?\s*\n?', '', code)
         code = re.sub(r'\n?```\s*', '', code)
         return code.strip()
+
+    def revise_widget_code(
+        self,
+        current_code: str,
+        revision_description: str,
+        data_info: dict[str, Any],
+        progress_callback: Callable[[str], None] | None = None
+    ) -> str:
+        prompt = self._build_revision_prompt(current_code, revision_description, data_info)
+
+        if progress_callback:
+            code_chunks = []
+            with self.client.messages.stream(
+                model=self.model,
+                max_tokens=4096,
+                messages=[{"role": "user", "content": prompt}],
+            ) as stream:
+                for text in stream.text_stream:
+                    code_chunks.append(text)
+                    progress_callback(text)
+            
+            code = "".join(code_chunks)
+        else:
+            message = self.client.messages.create(
+                model=self.model,
+                max_tokens=4096,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            code = message.content[0].text
+        
+        return self._clean_code(code)
+
+    def _build_revision_prompt(self, current_code: str, revision_description: str, data_info: dict[str, Any]) -> str:
+        columns = data_info.get("columns", [])
+        dtypes = data_info.get("dtypes", {})
+        sample_data = data_info.get("sample", {})
+
+        return f"""Revise this React application based on the following request:
+
+REVISION REQUEST: {revision_description}
+
+CURRENT CODE:
+```javascript
+{current_code}
+```
+
+Data schema:
+- Columns: {', '.join(columns)}
+- Types: {dtypes}
+- Sample data: {sample_data}
+
+Requirements:
+1. Use React and modern JavaScript
+2. Import libraries from CDN as needed (d3, plotly, etc)
+3. Make it interactive and visually appealing
+4. Do NOT wrap in markdown code fences
+
+Return ONLY the complete revised React application code. No markdown fences, no explanations."""
 
     def _build_prompt(self, description: str, data_info: dict[str, Any]) -> str:
         columns = data_info.get("columns", [])
