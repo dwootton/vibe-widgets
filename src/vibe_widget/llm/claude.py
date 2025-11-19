@@ -56,6 +56,50 @@ class ClaudeProvider(LLMProvider):
         code = re.sub(r'\n?```\s*', '', code)
         return code.strip()
 
+    def fix_code_error(
+        self,
+        broken_code: str,
+        error_message: str,
+        data_info: dict[str, Any]
+    ) -> str:
+        """Fix code based on runtime error"""
+        
+        columns = data_info.get("columns", [])
+        dtypes = data_info.get("dtypes", {})
+        
+        prompt = f"""The following widget code has a runtime error. Fix it.
+
+ERROR MESSAGE:
+{error_message}
+
+BROKEN CODE:
+```javascript
+{broken_code}
+```
+
+Data schema:
+- Columns: {', '.join(columns)}
+- Types: {dtypes}
+
+CRITICAL FIXES TO APPLY:
+1. Ensure ALL variables are defined before use
+2. Check for typos in variable names (e.g., survivalRate vs survival_rate)
+3. Verify all imports are correct and use the specified CDN URLs
+4. Use the dependency injection pattern: export default function Widget({{ model, html, React }}) {{ ... }}
+5. Include proper cleanup in useEffect return statements
+6. Use htm syntax (html`<div>...</div>`) NOT JSX
+
+Return ONLY the fixed JavaScript code. No explanations, no markdown fences.
+"""
+        
+        message = self.client.messages.create(
+            model=self.model,
+            max_tokens=8192,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        
+        return self._clean_code(message.content[0].text)
+
     def revise_widget_code(
         self,
         current_code: str,
@@ -132,11 +176,19 @@ CRITICAL Requirements - Dependency Injection Pattern:
 3. Access data via: model.get("data")
 4. Use `html` (htm library) for rendering - DO NOT use JSX syntax
 5. Use `React` for hooks (React.useState, React.useEffect, React.useRef)
-6. Import external libraries from ESM CDN (https://esm.sh/) - D3, Plotly, Three.js, etc.
-7. DO NOT import React or ReactDOM (they are injected via props)
-8. DO NOT use JSX syntax (use html tagged templates instead)
-9. DO NOT wrap in markdown code fences
-10. DO NOT use 100vh for height - use fixed heights (e.g., 500px) or 100%
+6. Import external libraries from ESM CDN - USE THESE EXACT IMPORTS:
+   - D3 (for charts, graphs, data viz): import * as d3 from "https://esm.sh/d3@7"
+   - Three.js (for 3D graphics): import * as THREE from "https://esm.sh/three@0.160"
+   - React is already injected - use html + React for UI components
+7. Library selection guide:
+   - Use D3 for: bar charts, line graphs, scatter plots, network diagrams, hierarchies
+   - Use Three.js for: 3D visualizations, point clouds, mesh graphics, terrain
+   - Use React/htm only for: tables, cards, dashboards, forms, simple layouts
+8. DO NOT import React or ReactDOM (they are injected via props)
+9. DO NOT use JSX syntax (use html tagged templates instead)
+10. DO NOT wrap in markdown code fences
+11. DO NOT use 100vh for height - use fixed heights (e.g., 500px) or 100%
+12. ALWAYS include proper cleanup in useEffect return statements to prevent memory leaks
 
 Example structure:
 ```javascript
@@ -165,13 +217,13 @@ export default function VisualizationWidget({{ model, html, React }}) {{
   }}, [data]);
   
   // Use html tagged templates (NOT JSX)
-  return html\`
+  return html`
     <div style=${{{{ padding: '20px' }}}}>
       <h2>My Visualization</h2>
       <div ref=${{containerRef}}></div>
-      ${{selectedItem && html\`<p>Selected: ${{selectedItem}}</p>\`}}
+      ${{selectedItem && html`<p>Selected: ${{selectedItem}}</p>`}}
     </div>
-  \`;
+  `;
 }}
 ```
 

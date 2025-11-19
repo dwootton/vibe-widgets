@@ -55,6 +55,9 @@ class VibeWidget(anywidget.AnyWidget):
     status = traitlets.Unicode("idle").tag(sync=True)
     logs = traitlets.List([]).tag(sync=True)
     code = traitlets.Unicode("").tag(sync=True)
+    
+    error_message = traitlets.Unicode("").tag(sync=True)
+    retry_count = traitlets.Int(0).tag(sync=True)
 
     def __init__(
         self, 
@@ -95,8 +98,12 @@ class VibeWidget(anywidget.AnyWidget):
             status="generating",
             logs=[],
             code="",
+            error_message="",
+            retry_count=0,
             **kwargs
         )
+        
+        self.observe(self._on_error, names='error_message')
         
         if show_progress:
             try:
@@ -108,7 +115,9 @@ class VibeWidget(anywidget.AnyWidget):
         try:
             self.logs = [f"Analyzing data: {df.shape[0]} rows × {df.shape[1]} columns"]
             
-            llm_provider = ClaudeProvider(api_key=api_key, model=model)
+            self.llm_provider = ClaudeProvider(api_key=api_key, model=model)
+            self.data_info = self._extract_data_info(df)
+            llm_provider = self.llm_provider
             
             data_profile = context 
             if isinstance(context, DataProfile):
@@ -177,6 +186,36 @@ class VibeWidget(anywidget.AnyWidget):
             self.status = "error"
             self.logs = self.logs + [f"Error: {str(e)}"]
             raise
+    
+    def _on_error(self, change):
+        """Called when frontend reports a runtime error"""
+        error_msg = change['new']
+        
+        if not error_msg or self.retry_count >= 2:
+            return
+        
+        self.retry_count += 1
+        self.status = 'generating'
+        
+        error_preview = error_msg.split('\n')[0][:100]
+        self.logs = self.logs + [f"Error detected (attempt {self.retry_count}): {error_preview}"]
+        self.logs = self.logs + ["Asking LLM to fix the error..."]
+        
+        try:
+            fixed_code = self.llm_provider.fix_code_error(
+                self.code,
+                error_msg,
+                self.data_info
+            )
+            
+            self.logs = self.logs + ["Code fixed, retrying..."]
+            self.code = fixed_code
+            self.status = 'ready'
+            self.error_message = ""
+        except Exception as e:
+            self.status = "error"
+            self.logs = self.logs + [f"Fix attempt failed: {str(e)}"]
+            self.error_message = ""
     
     def _profile_to_info(self, profile) -> dict[str, Any]:
         """Convert DataProfile to info dict for LLM"""

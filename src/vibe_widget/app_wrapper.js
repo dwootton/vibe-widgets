@@ -77,12 +77,14 @@ function ProgressMap({ logs }) {
 function SandboxedRunner({ code, model }) {
   const [error, setError] = React.useState(null);
   const [GuestWidget, setGuestWidget] = React.useState(null);
+  const [isRetrying, setIsRetrying] = React.useState(false);
 
   React.useEffect(() => {
     if (!code) return;
 
     const executeCode = async () => {
       try {
+        setIsRetrying(false);
         const blob = new Blob([code], { type: 'text/javascript' });
         const url = URL.createObjectURL(blob);
         
@@ -92,17 +94,48 @@ function SandboxedRunner({ code, model }) {
         if (module.default && typeof module.default === 'function') {
           setGuestWidget(() => module.default);
           setError(null);
+          model.set('error_message', '');
+          model.save_changes();
         } else {
           throw new Error('Generated code must export a default function');
         }
       } catch (err) {
         console.error('Code execution error:', err);
-        setError(err.message);
+        
+        const retryCount = model.get('retry_count') || 0;
+        
+        if (retryCount < 2) {
+          setIsRetrying(true);
+          const errorDetails = err.toString() + '\n\nStack:\n' + (err.stack || 'No stack trace');
+          model.set('error_message', errorDetails);
+          model.save_changes();
+        } else {
+          let errorMessage = err.message;
+          let suggestion = '';
+          
+          if (err.message.includes('is not a function') || err.message.includes('Cannot read')) {
+            suggestion = 'Library import error. Check CDN URL and import syntax.';
+          } else if (err.message.includes('Failed to fetch')) {
+            suggestion = 'Network error loading library. Check internet connection.';
+          } else if (err.message.includes('Unexpected token')) {
+            suggestion = 'Syntax error in generated code.';
+          }
+          
+          setError(suggestion ? `${errorMessage}\n\nSuggestion: ${suggestion}` : errorMessage);
+        }
       }
     };
 
     executeCode();
-  }, [code]);
+  }, [code, model]);
+
+  if (isRetrying) {
+    return html`
+      <div style=${{ padding: '20px', color: '#ffa07a', fontSize: '14px' }}>
+        Error detected. Asking LLM to fix...
+      </div>
+    `;
+  }
 
   if (error) {
     return html`
@@ -111,9 +144,13 @@ function SandboxedRunner({ code, model }) {
         background: '#3c1f1f',
         color: '#ff6b6b',
         borderRadius: '6px',
-        fontFamily: 'monospace'
+        fontFamily: 'monospace',
+        whiteSpace: 'pre-wrap'
       }}>
-        <strong>Error:</strong> ${error}
+        <strong>Error (after 2 retry attempts):</strong> ${error}
+        <div style=${{ marginTop: '16px', fontSize: '12px', color: '#ffa07a' }}>
+          Check browser console for full stack trace
+        </div>
       </div>
     `;
   }
@@ -256,9 +293,13 @@ function AppWrapper({ model }) {
   `;
 }
 
+let rootInstance = null;
+
 function render({ model, el }) {
-  const root = createRoot(el);
-  root.render(html`<${AppWrapper} model=${model} />`);
+  if (!rootInstance) {
+    rootInstance = createRoot(el);
+  }
+  rootInstance.render(html`<${AppWrapper} model=${model} />`);
 }
 
 export default { render };
