@@ -50,7 +50,14 @@ def _clean_for_json(obj: Any) -> Any:
 class VibeWidget(anywidget.AnyWidget):
     data = traitlets.List([]).tag(sync=True)
     description = traitlets.Unicode("").tag(sync=True)
-    data_profile_md = traitlets.Unicode("").tag(sync=True)  # For debugging/display
+    data_profile_md = traitlets.Unicode("").tag(sync=True)
+    
+    status = traitlets.Unicode("idle").tag(sync=True)
+    logs = traitlets.List([]).tag(sync=True)
+    code = traitlets.Unicode("").tag(sync=True)
+    
+    error_message = traitlets.Unicode("").tag(sync=True)
+    retry_count = traitlets.Int(0).tag(sync=True)
 
     def __init__(
         self, 
@@ -73,31 +80,45 @@ class VibeWidget(anywidget.AnyWidget):
             model: Claude model to use
             use_preprocessor: Whether to use the intelligent preprocessor (recommended)
             context: Additional context about the data (domain, purpose, etc.)
-            show_progress: Whether to show progress widget
+            show_progress: Whether to show progress widget (deprecated - now uses internal state)
             **kwargs: Additional widget parameters
         """
-        progress = None
         parser = CodeStreamParser()
         
+        app_wrapper_path = Path(__file__).parent / "app_wrapper.js"
+        self._esm = app_wrapper_path.read_text()
+        
+        data_json = df.to_dict(orient="records")
+        data_json = _clean_for_json(data_json)
+        
+        super().__init__(
+            data=data_json,
+            description=description,
+            data_profile_md="",
+            status="generating",
+            logs=[],
+            code="",
+            error_message="",
+            retry_count=0,
+            **kwargs
+        )
+        
+        self.observe(self._on_error, names='error_message')
+        
         if show_progress:
-            progress = ProgressWidget()
-            display(progress)
+            try:
+                from IPython.display import display
+                display(self)
+            except ImportError:
+                pass
         
         try:
-            # Step 1: Analyze schema
-            if progress:
-                progress.add_timeline_item(
-                    "Analyzing data",
-                    f"Schema: {df.shape[0]} rows × {df.shape[1]} columns",
-                    icon="○",
-                    complete=False
-                )
-                progress.add_micro_bubble("Analyzing data schema...")
-                progress.update_progress(10)
+            self.logs = [f"Analyzing data: {df.shape[0]} rows × {df.shape[1]} columns"]
             
-            llm_provider = ClaudeProvider(api_key=api_key, model=model)
+            self.llm_provider = ClaudeProvider(api_key=api_key, model=model)
+            self.data_info = self._extract_data_info(df)
+            llm_provider = self.llm_provider
             
-            # Step 2: Preprocess data to create rich profile
             data_profile = context 
             if isinstance(context, DataProfile):
                 enhanced_description = f"{description}\n\nData Profile: {data_profile.to_markdown()}"
@@ -106,89 +127,55 @@ class VibeWidget(anywidget.AnyWidget):
                 enhanced_description = f"{description}\n\n======================\n\n CONTEXT::DATA_INFO:\n\n {data_info}"
                 data_profile = None
             
-            if progress:
-                progress.add_timeline_item(
-                    "Schema analyzed",
-                    f"Columns: {', '.join(df.columns.tolist()[:3])}{'...' if len(df.columns) > 3 else ''}",
-                    icon="✓",
-                    complete=True
-                )
+            self.logs = self.logs + [f"Columns: {', '.join(df.columns.tolist()[:3])}{'...' if len(df.columns) > 3 else ''}"]
             
-            # Step 3: Generate widget code with enhanced context
-            if progress:
-                progress.add_timeline_item(
-                    "Generating code",
-                    "Streaming from Claude API...",
-                    icon="○",
-                    complete=False
-                )
-                progress.add_micro_bubble("Generating widget code...")
-                progress.update_progress(20)
+            self.logs = self.logs + ["Generating widget code..."]
             
             data_info = self._extract_data_info(df)
             
-            # Batch updates to reduce UI thrashing
             chunk_buffer = []
             update_counter = 0
+            last_pattern_count = 0
             
             def stream_callback(chunk: str):
-                nonlocal update_counter
-                
-                if not progress:
-                    return
+                nonlocal update_counter, last_pattern_count
                 
                 chunk_buffer.append(chunk)
                 update_counter += 1
                 
-                # Parse chunk for landmarks
                 updates = parser.parse_chunk(chunk)
                 
-                # Only update UI every 50 chunks OR when new pattern detected
                 should_update = (
-                    update_counter % 50 == 0 or 
+                    update_counter % 30 == 0 or 
                     parser.has_new_pattern() or
                     len(''.join(chunk_buffer)) > 500
                 )
                 
                 if should_update:
-                    # Batch update console
                     if chunk_buffer:
-                        progress.add_stream(''.join(chunk_buffer))
+                        snippet = ''.join(chunk_buffer)[:100]
                         chunk_buffer.clear()
                     
-                    # Add micro-bubbles only for new patterns
                     for update in updates:
                         if update["type"] == "micro_bubble":
-                            progress.add_micro_bubble(update["message"])
-                        elif update["type"] == "action_tile":
-                            progress.add_action_tile(update["icon"], update["message"])
+                            current_logs = list(self.logs)
+                            current_logs.append(update["message"])
+                            self.logs = current_logs
                     
-                    # Update progress bar based on code generation progress
-                    current_progress = 20 + (parser.get_progress() * 60)
-                    progress.update_progress(current_progress)
+                    current_pattern_count = len(parser.detected)
+                    if current_pattern_count == last_pattern_count and update_counter % 100 == 0:
+                        current_logs = list(self.logs)
+                        current_logs.append(f"Generating code... ({update_counter} chunks)")
+                        self.logs = current_logs
+                    last_pattern_count = current_pattern_count
             
             widget_code = llm_provider.generate_widget_code(
                 enhanced_description, 
                 data_info,
-                progress_callback=stream_callback if progress else None
+                progress_callback=stream_callback
             )
             
-            # Flush any remaining buffer
-            if progress and chunk_buffer:
-                progress.add_stream(''.join(chunk_buffer))
-            
-            if progress:
-                progress.add_timeline_item(
-                    "Code generated",
-                    f"Widget code ready ({len(widget_code)} chars)",
-                    icon="✓",
-                    complete=True
-                )
-            
-            # Step 4: Cache and store widget
-            if progress:
-                progress.add_micro_bubble("Saving widget...")
-                progress.update_progress(90)
+            self.logs = self.logs + [f"Code generated: {len(widget_code)} characters"]
             
             widget_hash = hashlib.md5(f"{description}{df.shape}".encode()).hexdigest()[:8]
             widget_dir = Path(__file__).parent / "widgets"
@@ -197,34 +184,46 @@ class VibeWidget(anywidget.AnyWidget):
             
             widget_file.write_text(widget_code)
             
-            if progress:
-                progress.add_timeline_item(
-                    "Widget saved",
-                    f"Saved to widget_{widget_hash}.js",
-                    icon="✓",
-                    complete=True
-                )
-                progress.update_progress(100)
-                progress.complete()
-            
-            self._esm = widget_code
-            
-            # Convert data to JSON and clean for serialization
-            data_json = df.to_dict(orient="records")
-            data_json = _clean_for_json(data_json)
-            
-            # Initialize widget
-            super().__init__(
-                data=data_json,
-                description=enhanced_description,
-                data_profile_md=data_profile.to_markdown() if data_profile else "",
-                **kwargs
-            )
+            self.logs = self.logs + [f"Widget saved: widget_{widget_hash}.js"]
+            self.code = widget_code
+            self.status = "ready"
+            self.description = enhanced_description
+            self.data_profile_md = data_profile.to_markdown() if data_profile else ""
             
         except Exception as e:
-            if progress:
-                progress.error(str(e))
+            self.status = "error"
+            self.logs = self.logs + [f"Error: {str(e)}"]
             raise
+    
+    def _on_error(self, change):
+        """Called when frontend reports a runtime error"""
+        error_msg = change['new']
+        
+        if not error_msg or self.retry_count >= 2:
+            return
+        
+        self.retry_count += 1
+        self.status = 'generating'
+        
+        error_preview = error_msg.split('\n')[0][:100]
+        self.logs = self.logs + [f"Error detected (attempt {self.retry_count}): {error_preview}"]
+        self.logs = self.logs + ["Asking LLM to fix the error..."]
+        
+        try:
+            fixed_code = self.llm_provider.fix_code_error(
+                self.code,
+                error_msg,
+                self.data_info
+            )
+            
+            self.logs = self.logs + ["Code fixed, retrying..."]
+            self.code = fixed_code
+            self.status = 'ready'
+            self.error_message = ""
+        except Exception as e:
+            self.status = "error"
+            self.logs = self.logs + [f"Fix attempt failed: {str(e)}"]
+            self.error_message = ""
     
     def _profile_to_info(self, profile) -> dict[str, Any]:
         """Convert DataProfile to info dict for LLM"""

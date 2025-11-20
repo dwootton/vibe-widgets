@@ -33,7 +33,7 @@ class ClaudeProvider(LLMProvider):
             code_chunks = []
             with self.client.messages.stream(
                 model=self.model,
-                max_tokens=4096,
+                max_tokens=8192,
                 messages=[{"role": "user", "content": prompt}],
             ) as stream:
                 for text in stream.text_stream:
@@ -44,7 +44,7 @@ class ClaudeProvider(LLMProvider):
         else:
             message = self.client.messages.create(
                 model=self.model,
-                max_tokens=4096,
+                max_tokens=8192,
                 messages=[{"role": "user", "content": prompt}],
             )
             code = message.content[0].text
@@ -55,6 +55,50 @@ class ClaudeProvider(LLMProvider):
         code = re.sub(r'```(?:javascript|jsx?|typescript|tsx?)?\s*\n?', '', code)
         code = re.sub(r'\n?```\s*', '', code)
         return code.strip()
+
+    def fix_code_error(
+        self,
+        broken_code: str,
+        error_message: str,
+        data_info: dict[str, Any]
+    ) -> str:
+        """Fix code based on runtime error"""
+        
+        columns = data_info.get("columns", [])
+        dtypes = data_info.get("dtypes", {})
+        
+        prompt = f"""The following widget code has a runtime error. Fix it.
+
+ERROR MESSAGE:
+{error_message}
+
+BROKEN CODE:
+```javascript
+{broken_code}
+```
+
+Data schema:
+- Columns: {', '.join(columns)}
+- Types: {dtypes}
+
+CRITICAL FIXES TO APPLY:
+1. Ensure ALL variables are defined before use
+2. Check for typos in variable names (e.g., survivalRate vs survival_rate)
+3. Verify all imports are correct and use the specified CDN URLs
+4. Use the dependency injection pattern: export default function Widget({{ model, html, React }}) {{ ... }}
+5. Include proper cleanup in useEffect return statements
+6. Use htm syntax (html`<div>...</div>`) NOT JSX
+
+Return ONLY the fixed JavaScript code. No explanations, no markdown fences.
+"""
+        
+        message = self.client.messages.create(
+            model=self.model,
+            max_tokens=8192,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        
+        return self._clean_code(message.content[0].text)
 
     def revise_widget_code(
         self,
@@ -69,7 +113,7 @@ class ClaudeProvider(LLMProvider):
             code_chunks = []
             with self.client.messages.stream(
                 model=self.model,
-                max_tokens=4096,
+                max_tokens=8192,
                 messages=[{"role": "user", "content": prompt}],
             ) as stream:
                 for text in stream.text_stream:
@@ -80,7 +124,7 @@ class ClaudeProvider(LLMProvider):
         else:
             message = self.client.messages.create(
                 model=self.model,
-                max_tokens=4096,
+                max_tokens=8192,
                 messages=[{"role": "user", "content": prompt}],
             )
             code = message.content[0].text
@@ -126,36 +170,71 @@ Data schema:
 - Types: {dtypes}
 - Sample data: {sample_data}
 
-CRITICAL AFM Requirements:
-1. Must follow the anywidget specification exactly
-2. Export a default object with a render function: export default {{ render }}
-3. The render function signature MUST be: function render({{ model, el }}) {{ ... }}
-4. Access data via: model.get("data")
-5. Use modern vanilla JavaScript or import libraries from CDN (d3, plotly, etc)
-6. Create DOM elements and append to 'el' HTMLElement
-7. Make it interactive and visually appealing
-8. Do NOT use React/ReactDOM - use vanilla JS or imported libraries only
-9. Do NOT wrap in markdown code fences
-10. DO NOT use 100vh for height - use a fixed height or 100%
+CRITICAL Requirements - Dependency Injection Pattern:
+1. Export a DEFAULT FUNCTION (not an object) that accepts {{ model, html, React }} as parameters
+2. The function signature MUST be: export default function Widget({{ model, html, React }}) {{ ... }}
+3. Access data via: model.get("data")
+4. Use `html` (htm library) for rendering - DO NOT use JSX syntax
+5. Use `React` for hooks (React.useState, React.useEffect, React.useRef)
+6. Import external libraries from ESM CDN - USE THESE EXACT IMPORTS:
+   - D3 (for charts, graphs, data viz): import * as d3 from "https://esm.sh/d3@7"
+   - Three.js (for 3D graphics): import * as THREE from "https://esm.sh/three@0.160"
+   - React is already injected - use html + React for UI components
+7. Library selection guide:
+   - Use D3 for: bar charts, line graphs, scatter plots, network diagrams, hierarchies
+   - Use Three.js for: 3D visualizations, point clouds, mesh graphics, terrain
+   - Use React/htm only for: tables, cards, dashboards, forms, simple layouts
+8. DO NOT import React or ReactDOM (they are injected via props)
+9. DO NOT use JSX syntax (use html tagged templates instead)
+10. DO NOT wrap in markdown code fences
+11. DO NOT use 100vh or viewport units - use fixed heights (e.g., 500px, 600px) - viewport units break Jupyter
+12. ALWAYS include proper cleanup in useEffect return statements to prevent memory leaks
 
 Example structure:
-```
+```javascript
 import * as d3 from "https://esm.sh/d3@7";
 
-function render({{ model, el }}) {{
+export default function VisualizationWidget({{ model, html, React }}) {{
   const data = model.get("data");
+  const [selectedItem, setSelectedItem] = React.useState(null);
+  const containerRef = React.useRef(null);
   
-  // Create visualization using d3, plotly, or vanilla JS
-  // Append elements to el
+  React.useEffect(() => {{
+    if (!containerRef.current) return;
+    
+    // Create D3 visualization
+    const svg = d3.select(containerRef.current)
+      .append("svg")
+      .attr("width", 600)
+      .attr("height", 400);
+    
+    // ... D3 code ...
+    
+    return () => {{
+      // Cleanup
+      svg.remove();
+    }};
+  }}, [data]);
   
-  // Optional: listen to model changes
-  model.on("change:data", () => {{
-    // Update visualization
-  }});
+  // Use html tagged templates (NOT JSX)
+  return html`
+    <div style=${{{{ padding: '20px' }}}}>
+      <h2>My Visualization</h2>
+      <div ref=${{containerRef}}></div>
+      ${{selectedItem && html`<p>Selected: ${{selectedItem}}</p>`}}
+    </div>
+  `;
 }}
-
-export default {{ render }};
 ```
+
+Key Syntax Rules:
+- Use html`<div>...</div>` NOT <div>...</div>
+- Use class= NOT className=
+- Props: onClick=${{handler}} NOT onClick={{handler}}
+- Style objects: style=${{{{ padding: '20px' }}}}
+- Conditionals: ${{condition && html`...`}}
+- Components: <${{ComponentName}} prop=${{value}} />
+- Children: html`<div>${{children}}</div>`
 
 
 ## Frontend Aesthetics Guidelines
@@ -163,6 +242,7 @@ export default {{ render }};
 Focus on:
 - **Typography**: Choose fonts that are beautiful, unique, and interesting. Avoid generic fonts like Arial and Inter; opt instead for distinctive choices that elevate the frontend's aesthetics; unexpected, characterful font choices. Pair a distinctive display font with a refined body font.
 - **Color & Theme**: Commit to a cohesive aesthetic. Use CSS variables for consistency. Dominant colors with sharp accents outperform timid, evenly-distributed palettes.
+- NEVER use emojis.
 - **Motion**: Use animations for effects and micro-interactions. Prioritize CSS-only solutions for HTML. Use Motion library for React when available. Focus on high-impact moments: one well-orchestrated page load with staggered reveals (animation-delay) creates more delight than scattered micro-interactions. Use scroll-triggering and hover states that surprise.
 - **Spatial Composition**: Unexpected layouts. Asymmetry. Overlap. Diagonal flow. Grid-breaking elements. Generous negative space OR controlled density.
 - **Backgrounds & Visual Details**: Create atmosphere and depth rather than defaulting to solid colors. Add contextual effects and textures that match the overall aesthetic. Apply creative forms like gradient meshes, noise textures, geometric patterns, layered transparencies, dramatic shadows, decorative borders, custom cursors, and grain overlays.
