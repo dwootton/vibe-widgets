@@ -1,6 +1,5 @@
 import os
 import re
-from pathlib import Path
 from typing import Any, Callable
 
 from anthropic import Anthropic
@@ -20,230 +19,12 @@ class ClaudeProvider(LLMProvider):
             )
         self.model = model
         self.client = Anthropic(api_key=self.api_key)
-    
-    def _build_exports_imports_section(self, exports: dict, imports: dict) -> str:
-        """Build the exports/imports section of the prompt"""
-        if not exports and not imports:
-            return ""
-        
-        sections = []
-        
-        if exports:
-            export_list = "\n".join([f"- {name}: {desc}" for name, desc in exports.items()])
-            sections.append(f"""
-═══════════════════════════════════════════════════════════════
-EXPORTS (State to share with other widgets):
-═══════════════════════════════════════════════════════════════
-{export_list}
-
-🔴 CRITICAL EXPORT REQUIREMENTS:
-1. ALWAYS initialize exports immediately in render() with default values
-2. ALWAYS update exports CONTINUOUSLY during user interactions (not just once!)
-3. ALWAYS call model.save_changes() after EVERY model.set() call
-4. Exports are meant to be consumed by other widgets - keep them updated!
-
-✅ CORRECT Pattern for exporting selected_indices:
-```javascript
-function render({{ model, el }}) {{
-  // 1. Initialize immediately
-  model.set("selected_indices", []);
-  model.save_changes();
-  
-  // 2. Update continuously on EVERY interaction
-  canvas.addEventListener('mousedown', (e) => {{
-    isDrawing = true;
-    paint(e.clientX - rect.left, e.clientY - rect.top);
-  }});
-  
-  canvas.addEventListener('mousemove', (e) => {{
-    if (!isDrawing) return;
-    paint(e.clientX - rect.left, e.clientY - rect.top);
-    // Export updates DURING the interaction!
-  }});
-  
-  function paint(x, y) {{
-    // Calculate new values...
-    const newData = calculateData(x, y);
-    
-    // Update export immediately
-    model.set("selected_indices", newData);
-    model.save_changes();
-  }}
-}}
-```
-
-✅ CORRECT Pattern for exporting heightmap with brush painting:
-```javascript
-function render({{ model, el }}) {{
-  // Initialize
-  const gridSize = 64;
-  let heightmap = new Array(gridSize * gridSize).fill(0);
-  model.set("heightmap", heightmap);
-  model.save_changes();
-  
-  let isDrawing = false;
-  
-  function paint(x, y) {{
-    // Get current heightmap
-    heightmap = [...model.get("heightmap")];
-    
-    // Apply brush effect with radius
-    const radius = 3;
-    const intensity = 0.05;
-    for (let dy = -radius; dy <= radius; dy++) {{
-      for (let dx = -radius; dx <= radius; dx++) {{
-        const dist = Math.sqrt(dx*dx + dy*dy);
-        if (dist <= radius) {{
-          const idx = /* calculate index */;
-          heightmap[idx] += (1 - dist/radius) * intensity;
-        }}
-      }}
-    }}
-    
-    // Export EVERY paint stroke
-    model.set("heightmap", heightmap);
-    model.save_changes();
-  }}
-  
-  canvas.addEventListener('mousedown', (e) => {{
-    isDrawing = true;
-    paint(getX(e), getY(e));
-  }});
-  
-  canvas.addEventListener('mousemove', (e) => {{
-    if (!isDrawing) return;
-    paint(getX(e), getY(e)); // Updates export continuously!
-  }});
-}}
-```
-
-❌ WRONG - Only updating once:
-```javascript
-// BAD: Only updates on final mouseup
-canvas.addEventListener('mouseup', () => {{
-  model.set("selected_indices", finalSelection);
-  model.save_changes();
-}});
-```
-
-❌ WRONG - Forgetting save_changes():
-```javascript
-// BAD: Missing save_changes()
-model.set("selected_indices", data);
-// Changes won't sync to Python!
-```
-""")
-        
-        if imports:
-            import_list = "\n".join([f"- {name}: {desc}" for name, desc in imports.items()])
-            sections.append(f"""
-═══════════════════════════════════════════════════════════════
-IMPORTS (State from other widgets):
-═══════════════════════════════════════════════════════════════
-{import_list}
-
-🔴 CRITICAL IMPORT REQUIREMENTS:
-1. Read imported values using model.get("trait_name")
-2. ALWAYS listen for changes with model.on("change:trait_name", callback)
-3. Handle null/undefined/empty cases gracefully
-4. Update visualization immediately when imports change
-
-✅ CORRECT Pattern for importing heightmap (3D terrain):
-```javascript
-import * as THREE from "https://esm.sh/three@0.154.0";
-import {{ OrbitControls }} from "https://esm.sh/three@0.154.0/examples/jsm/controls/OrbitControls.js";
-
-function render({{ model, el }}) {{
-  // Setup Three.js scene
-  const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(60, width/height, 0.1, 1000);
-  const renderer = new THREE.WebGLRenderer({{ antialias: true }});
-  el.appendChild(renderer.domElement);
-  
-  const gridSize = 64;
-  const geometry = new THREE.PlaneGeometry(64, 64, gridSize - 1, gridSize - 1);
-  const material = new THREE.MeshStandardMaterial({{ 
-    color: 0x228833,
-    flatShading: true 
-  }});
-  const plane = new THREE.Mesh(geometry, material);
-  plane.rotation.x = -Math.PI / 2;
-  scene.add(plane);
-  
-  // Function to update terrain from heightmap
-  function updateTerrain() {{
-    const heightmap = model.get("heightmap");
-    if (!heightmap || heightmap.length === 0) return;
-    
-    const positions = geometry.attributes.position;
-    
-    // Update vertex heights
-    for (let i = 0; i < positions.count; i++) {{
-      const h = heightmap[i] * 20; // Scale to visible range
-      positions.setZ(i, h);
-    }}
-    
-    positions.needsUpdate = true;
-    geometry.computeVertexNormals();
-  }}
-  
-  // Initial render
-  updateTerrain();
-  
-  // CRITICAL: Listen for changes!
-  model.on("change:heightmap", updateTerrain);
-  
-  // Animation loop
-  function animate() {{
-    requestAnimationFrame(animate);
-    controls.update();
-    renderer.render(scene, camera);
-  }}
-  animate();
-}}
-```
-
-✅ CORRECT Pattern for importing selected_indices (filtering):
-```javascript
-function render({{ model, el }}) {{
-  function updateVisualization() {{
-    const allData = model.get("data");
-    const selectedIndices = model.get("selected_indices") || [];
-    
-    // Filter data based on selection
-    const displayData = selectedIndices.length > 0
-      ? selectedIndices.map(i => allData[i]).filter(d => d !== undefined)
-      : allData;
-    
-    // Re-render visualization with filtered data
-    renderChart(displayData);
-  }}
-  
-  // Initial render
-  updateVisualization();
-  
-  // CRITICAL: Listen for BOTH data and selection changes!
-  model.on("change:data", updateVisualization);
-  model.on("change:selected_indices", updateVisualization);
-}}
-```
-
-❌ WRONG - Not listening for changes:
-```javascript
-// BAD: Only reads once, never updates!
-const heightmap = model.get("heightmap");
-updateMesh(heightmap);
-// Missing: model.on("change:heightmap", ...)
-```
-""")
-        
-        return "\n".join(sections)
 
     def generate_widget_code(
-        self, 
-        description: str, 
-        data_info: dict[str, Any], 
-        progress_callback: Callable[[str], None] | None = None
+        self,
+        description: str,
+        data_info: dict[str, Any],
+        progress_callback: Callable[[str], None] | None = None,
     ) -> str:
         prompt = self._build_prompt(description, data_info)
 
@@ -251,35 +32,30 @@ updateMesh(heightmap);
             code_chunks = []
             with self.client.messages.stream(
                 model=self.model,
-                max_tokens=4096,
+                max_tokens=8192,
                 messages=[{"role": "user", "content": prompt}],
             ) as stream:
                 for text in stream.text_stream:
                     code_chunks.append(text)
                     progress_callback(text)
-            
+
             code = "".join(code_chunks)
         else:
             message = self.client.messages.create(
                 model=self.model,
-                max_tokens=4096,
+                max_tokens=8192,
                 messages=[{"role": "user", "content": prompt}],
             )
             code = message.content[0].text
-        
-        return self._clean_code(code)
 
-    def _clean_code(self, code: str) -> str:
-        code = re.sub(r'```(?:javascript|jsx?|typescript|tsx?)?\s*\n?', '', code)
-        code = re.sub(r'\n?```\s*', '', code)
-        return code.strip()
+        return self._clean_code(code)
 
     def revise_widget_code(
         self,
         current_code: str,
         revision_description: str,
         data_info: dict[str, Any],
-        progress_callback: Callable[[str], None] | None = None
+        progress_callback: Callable[[str], None] | None = None,
     ) -> str:
         prompt = self._build_revision_prompt(current_code, revision_description, data_info)
 
@@ -287,73 +63,39 @@ updateMesh(heightmap);
             code_chunks = []
             with self.client.messages.stream(
                 model=self.model,
-                max_tokens=4096,
+                max_tokens=8192,
                 messages=[{"role": "user", "content": prompt}],
             ) as stream:
                 for text in stream.text_stream:
                     code_chunks.append(text)
                     progress_callback(text)
-            
+
             code = "".join(code_chunks)
         else:
             message = self.client.messages.create(
                 model=self.model,
-                max_tokens=4096,
+                max_tokens=8192,
                 messages=[{"role": "user", "content": prompt}],
             )
             code = message.content[0].text
-        
+
         return self._clean_code(code)
 
-    def _build_revision_prompt(self, current_code: str, revision_description: str, data_info: dict[str, Any]) -> str:
-        columns = data_info.get("columns", [])
-        dtypes = data_info.get("dtypes", {})
-        sample_data = data_info.get("sample", {})
+    def fix_code_error(
+        self,
+        broken_code: str,
+        error_message: str,
+        data_info: dict[str, Any],
+    ) -> str:
+        prompt = self._build_fix_prompt(broken_code, error_message, data_info)
 
-        return f"""You are revising a JavaScript visualization. Apply the requested changes while maintaining code quality.
+        message = self.client.messages.create(
+            model=self.model,
+            max_tokens=8192,
+            messages=[{"role": "user", "content": prompt}],
+        )
 
-═══════════════════════════════════════════════════════════════
-REVISION REQUEST: {revision_description}
-═══════════════════════════════════════════════════════════════
-
-CURRENT CODE:
-```javascript
-{current_code}
-```
-
-Data schema:
-- Columns: {', '.join(columns)}
-- Types: {dtypes}
-- Sample: {sample_data}
-
-═══════════════════════════════════════════════════════════════
-🔴 REQUIREMENTS
-═══════════════════════════════════════════════════════════════
-
-1. Maintain anywidget format: export default {{ render }}
-2. Keep function signature: function render({{ model, el }}) {{ ... }}
-3. Preserve imports and library usage patterns
-4. Fix any bugs or typos (e.g., THREE.PCFShadowShadowMap → THREE.PCFSoftShadowMap)
-5. Ensure all Three.js imports use correct version format:
-   - ✅ CORRECT: https://esm.sh/three@0.154.0
-   - ❌ WRONG: https://esm.sh/three@r128
-6. Check all geometry attributes exist before use
-7. Null-check all model.get() calls
-8. Append elements to 'el', never document.body
-9. No markdown code fences in output
-10. Keep it interactive and visually appealing
-
-═══════════════════════════════════════════════════════════════
-📝 OUTPUT
-═══════════════════════════════════════════════════════════════
-
-Return ONLY the complete revised JavaScript code.
-- NO markdown fences
-- NO explanations
-- JUST the working code
-
-Begin immediately:
-"""
+        return self._clean_code(message.content[0].text)
 
     def _build_prompt(self, description: str, data_info: dict[str, Any]) -> str:
         columns = data_info.get("columns", [])
@@ -362,7 +104,9 @@ Begin immediately:
         exports = data_info.get("exports", {})
         imports = data_info.get("imports", {})
 
-        return f"""You are an expert JavaScript developer creating a high-quality interactive visualization.
+        exports_imports_section = self._build_exports_imports_section(exports, imports)
+
+        return f"""You are an expert JavaScript + React developer building a high-quality interactive visualization that runs inside an AnyWidget React bundle.
 
 ═══════════════════════════════════════════════════════════════
 TASK: {description}
@@ -371,153 +115,281 @@ TASK: {description}
 Data schema:
 - Columns: {', '.join(columns) if columns else 'No data (widget uses imports only)'}
 - Types: {dtypes}
-- Sample: {sample_data}
+- Sample data: {sample_data}
 
-{self._build_exports_imports_section(exports, imports)}
+{exports_imports_section}
 
 ═══════════════════════════════════════════════════════════════
-🔴 CRITICAL ANYWIDGET SPECIFICATION
+🔴 CRITICAL REACT + HTM SPECIFICATION
 ═══════════════════════════════════════════════════════════════
 
 MUST FOLLOW EXACTLY:
-1. Export default object with render function: export default {{ render }}
-2. Function signature: function render({{ model, el }}) {{ ... }}
-3. Access data: const data = model.get("data")
-4. Append all elements to 'el' parameter (never to document.body)
-5. Use vanilla JS or import from CDN/ESM (d3, plotly, three.js, etc)
-6. NO React/ReactDOM - pure JavaScript only
-7. NO markdown code fences in output
-8. NO 100vh heights - use fixed pixel values or 100%
+1. Export a default function: export default function Widget({{ model, html, React }}) {{ ... }}
+2. Use html tagged templates (htm) for markup—no JSX or ReactDOM.render
+3. Access data with model.get("data") and treat it as immutable
+4. Append DOM nodes via refs rendered inside html templates (never touch document.body)
+5. Import libraries from ESM CDN with locked versions (d3@7, three@0.160, regl@3, etc.)
+6. Initialize exports immediately, update them as interactions occur, and call model.save_changes() each time
+7. Subscribe to imported traits with model.on("change:trait", handler) and unsubscribe in cleanup
+8. Every React.useEffect MUST return a cleanup that tears down listeners, observers, intervals, animation frames, WebGL resources, etc.
+9. Avoid 100vh/100vw—use fixed heights (360–640px) or flex layouts that respect notebook constraints
+10. Never wrap the output in markdown code fences
 
 ✅ CORRECT Template:
 ```javascript
 import * as d3 from "https://esm.sh/d3@7";
 
-function render({{ model, el }}) {{
-  const data = model.get("data");
-  
-  // Create container
-  const container = document.createElement("div");
-  container.style.width = "100%";
-  container.style.height = "400px";
-  el.appendChild(container);
-  
-  // Build visualization
-  // ... your code here ...
-  
-  // Listen to data changes if needed
-  model.on("change:data", () => {{
-    // Update visualization
-  }});
-}}
+export default function VisualizationWidget({{ model, html, React }}) {{
+  const data = model.get("data") || [];
+  const [selectedItem, setSelectedItem] = React.useState(null);
+  const containerRef = React.useRef(null);
 
-export default {{ render }};
+  React.useEffect(() => {{
+    if (!containerRef.current) return;
+    const svg = d3.select(containerRef.current)
+      .append("svg")
+      .attr("width", 640)
+      .attr("height", 420);
+
+    // ... build chart ...
+
+    return () => svg.remove();
+  }}, [data]);
+
+  return html`
+    <section class="viz-shell" style=${{{{ padding: '24px', height: '480px' }}}}>
+      <h2 class="viz-title">Experience</h2>
+      <div ref=${{containerRef}} class="viz-canvas"></div>
+      ${{selectedItem && html`<p class="viz-meta">Selected: ${{selectedItem}}</p>`}}
+    </section>
+  `;
+}}
 ```
+
+Key Syntax Rules:
+- Use html`<div>...</div>` NOT <div>...</div>
+- Use class= NOT className=
+- Event props: onClick=${{handler}} NOT onClick={{handler}}
+- Style objects: style=${{{{ padding: '20px' }}}}
+- Conditionals: ${{condition && html`...`}}
+- Components: <${{Component}} prop=${{value}} />
+- Children: html`<div>${{children}}</div>`
 
 ═══════════════════════════════════════════════════════════════
 🚫 COMMON PITFALLS TO AVOID
 ═══════════════════════════════════════════════════════════════
 
-❌ WRONG: Typos in Three.js constants
-```javascript
-renderer.shadowMap.type = THREE.PCFShadowShadowMap; // TYPO!
-```
-✅ CORRECT:
-```javascript
-renderer.shadowMap.type = THREE.PCFSoftShadowMap; // or THREE.PCFShadowMap
-```
+❌ Incorrect Three.js imports → use https://esm.sh/three@0.160 + matching submodules
+❌ Typos in constants (THREE.PCFShadowShadowMap) → spell EXACTLY (THREE.PCFSoftShadowMap)
+❌ Touching geometry attributes without checking they exist → guard geometry.attributes.position
+❌ Mutating data without null checks → verify model.get() payloads before iterating
+❌ Appending to document.body or using window globals instead of html refs
+❌ Forgetting cleanup → every effect must remove listeners, observers, raf handles, timers
+❌ Exporting state only once or forgetting model.save_changes()
 
-❌ WRONG: Missing geometry attribute checks
-```javascript
-positions.setZ(i, h); // Crashes if positions undefined!
-```
-✅ CORRECT:
-```javascript
-const positions = geometry.attributes.position;
-if (!positions) return;
-for (let i = 0; i < positions.count; i++) {{
-  positions.setZ(i, h);
-}}
-positions.needsUpdate = true;
-```
+═══════════════════════════════════════════════════════════════
+🎨 FRONTEND AESTHETICS
+═══════════════════════════════════════════════════════════════
 
-❌ WRONG: Incorrect Three.js imports
-```javascript
-import * as THREE from "https://esm.sh/three@r128"; // Wrong version format
-```
-✅ CORRECT:
-```javascript
-import * as THREE from "https://esm.sh/three@0.154.0";
-import {{ OrbitControls }} from "https://esm.sh/three@0.154.0/examples/jsm/controls/OrbitControls.js";
-```
-
-❌ WRONG: Not handling empty/null data
-```javascript
-const heightmap = model.get("heightmap");
-for (let i = 0; i < heightmap.length; i++) // Crashes if null!
-```
-✅ CORRECT:
-```javascript
-const heightmap = model.get("heightmap");
-if (!heightmap || heightmap.length === 0) {{
-  // Use default or return early
-  return;
-}}
-```
-
-❌ WRONG: Creating elements but not appending to el
-```javascript
-const canvas = document.createElement("canvas");
-document.body.appendChild(canvas); // WRONG! Goes to document!
-```
-✅ CORRECT:
-```javascript
-const canvas = document.createElement("canvas");
-el.appendChild(canvas); // Append to el parameter
-```
-
-❌ WRONG: Forgetting to clean up event listeners
-```javascript
-window.addEventListener("resize", onResize);
-// Memory leak when widget is destroyed!
-```
-✅ CORRECT:
-```javascript
-window.addEventListener("resize", onResize);
-
-// Return cleanup function
-return () => {{
-  window.removeEventListener("resize", onResize);
-  renderer.dispose();
-}};
-```
+- Typography: pick distinctive pairings—avoid generic system fonts
+- Color & Theme: commit to a palette, use CSS variables, sharp accents > timid gradients
+- Motion: purposeful animations (staggered entrances, hover reveals) with cleanup
+- Spatial Composition: embrace asymmetry, layering, depth (glassmorphism, grain, shadows)
+- Background Details: gradient meshes, subtle noise, geometric motifs, custom cursors; never default plain white unless justified
+- Never use emojis
 
 ═══════════════════════════════════════════════════════════════
 🎯 QUALITY CHECKLIST
 ═══════════════════════════════════════════════════════════════
 
-Before submitting code, verify:
-✓ All imported libraries use correct versions and URLs
-✓ All Three.js constants are spelled correctly (no double words)
-✓ All geometry attributes are checked before use
-✓ All data from model.get() is null-checked
-✓ All elements append to 'el' parameter, never document.body
-✓ Canvas/renderer sizing uses container dimensions, not 100vh
-✓ Event listeners have cleanup in return function
-✓ Exports are initialized AND updated continuously during interactions
-✓ Imports are read with model.get() AND have model.on() listeners
-✓ Code has no syntax errors (check brackets, semicolons, quotes)
-✓ No markdown code fences (```) in the output
+✓ CDN imports pinned to explicit versions
+✓ Exports initialized + updated continuously with model.set/model.save_changes
+✓ Imports read via model.get and kept in sync with model.on/model.off
+✓ Geometry attributes + data arrays null-checked before use
+✓ Canvas/WebGL sized via container, not 100vh
+✓ Effects have thorough cleanup (listeners, RAF, observers, intervals)
+✓ No markdown fences, emojis, or JSX
+✓ Styling leverages CSS variables + purposeful layout polish
 
 ═══════════════════════════════════════════════════════════════
 📝 OUTPUT REQUIREMENTS
 ═══════════════════════════════════════════════════════════════
 
-Generate ONLY the JavaScript code.
+Generate ONLY the working JavaScript code (imports → export default function Widget...).
 - NO explanations before or after
-- NO markdown code fences
-- NO comments like "Here's the code..."
-- JUST the working JavaScript code starting with imports (if any) and ending with export default {{ render }};
+- NO markdown fences
+- NO stray console logs unless essential for debugging
 
-Begin your response with the code immediately:
+Begin the response with code immediately.
 """
+
+    def _build_revision_prompt(
+        self,
+        current_code: str,
+        revision_description: str,
+        data_info: dict[str, Any],
+    ) -> str:
+        columns = data_info.get("columns", [])
+        dtypes = data_info.get("dtypes", {})
+        sample_data = data_info.get("sample", {})
+        exports = data_info.get("exports", {})
+        imports = data_info.get("imports", {})
+
+        exports_imports_section = self._build_exports_imports_section(exports, imports)
+
+        return f"""Revise the following AnyWidget React bundle code according to the request.
+
+REVISION REQUEST: {revision_description}
+
+CURRENT CODE:
+```javascript
+{current_code}
+```
+
+Data schema:
+- Columns: {', '.join(columns) if columns else 'No data (widget uses imports only)'}
+- Types: {dtypes}
+- Sample data: {sample_data}
+
+{exports_imports_section}
+
+Follow the SAME constraints as generation:
+- export default function Widget({{ model, html, React }})
+- html tagged templates only (no JSX)
+- ESM CDN imports with locked versions
+- Initialize/stream exports, subscribe to imports with model.on/model.off
+- Thorough cleanup in every React.useEffect
+- Respect notebook sizing (no 100vh) and keep styling bold + intentional
+
+Return only the full revised JavaScript code with imports through export default. No markdown fences or explanations.
+"""
+
+    def _build_fix_prompt(
+        self,
+        broken_code: str,
+        error_message: str,
+        data_info: dict[str, Any],
+    ) -> str:
+        columns = data_info.get("columns", [])
+        dtypes = data_info.get("dtypes", {})
+        sample_data = data_info.get("sample", {})
+        exports = data_info.get("exports", {})
+        imports = data_info.get("imports", {})
+
+        exports_imports_section = self._build_exports_imports_section(exports, imports)
+
+        return f"""Fix the AnyWidget React bundle code below. Keep the interaction model identical while eliminating the runtime error.
+
+ERROR MESSAGE:
+{error_message}
+
+BROKEN CODE:
+```javascript
+{broken_code}
+```
+
+Data schema:
+- Columns: {', '.join(columns) if columns else 'No data (widget uses imports only)'}
+- Types: {dtypes}
+- Sample data: {sample_data}
+
+{exports_imports_section}
+
+MANDATORY FIX RULES:
+1. Export default function Widget({{ model, html, React }})
+2. Use html tagged templates (htm) instead of JSX
+3. Guard every model.get payload before iterating or accessing properties
+4. Keep CDN imports version-pinned
+5. Restore all cleanup handlers (listeners, observers, RAF, timers, WebGL resources)
+6. Initialize exports immediately and call model.save_changes() after every model.set
+7. Subscribe to imported traits with model.on/model.off
+8. Do not wrap output in markdown fences or add commentary
+
+Return ONLY the corrected JavaScript code.
+"""
+
+    def _build_exports_imports_section(self, exports: dict, imports: dict) -> str:
+        if not exports and not imports:
+            return ""
+
+        sections: list[str] = []
+
+        if exports:
+            export_list = "\n".join([f"- {name}: {desc}" for name, desc in exports.items()])
+            sections.append(f"""
+═══════════════════════════════════════════════════════════════
+EXPORTS (State shared with other widgets)
+═══════════════════════════════════════════════════════════════
+{export_list}
+
+🔴 CRITICAL EXPORT LIFECYCLE:
+1. Initialize every export when the widget mounts
+2. Update exports continuously (dragging, painting, playback, etc.)
+3. Call model.set + model.save_changes() together every time the value changes
+4. Remove listeners in React.useEffect cleanup blocks
+
+✅ Example – Canvas selection
+```javascript
+React.useEffect(() => {{
+  const canvas = canvasRef.current;
+  if (!canvas) return;
+  model.set("selected_indices", []);
+  model.save_changes();
+
+  const handlePointerMove = (evt) => {{
+    if (!evt.buttons) return;
+    const selection = computeSelection(evt, canvas);
+    model.set("selected_indices", selection);
+    model.save_changes();
+  }};
+
+  canvas.addEventListener("pointermove", handlePointerMove);
+  return () => canvas.removeEventListener("pointermove", handlePointerMove);
+}}, []);
+```
+""")
+
+        if imports:
+            import_list = "\n".join([f"- {name}: {desc}" for name, desc in imports.items()])
+            sections.append(f"""
+═══════════════════════════════════════════════════════════════
+IMPORTS (State provided by other widgets)
+═══════════════════════════════════════════════════════════════
+{import_list}
+
+🔴 CRITICAL IMPORT RULES:
+1. Read imports via model.get inside effects or memoized callbacks
+2. Subscribe with model.on("change:trait", handler) and unsubscribe on cleanup
+3. Guard against null/empty payloads before mutating DOM/WebGL state
+4. Trigger rerenders or recalculations immediately after each import change
+
+✅ Example – React + heightmap import
+```javascript
+React.useEffect(() => {{
+  if (!meshRef.current) return;
+
+  const updateMesh = () => {{
+    const heightmap = model.get("heightmap");
+    if (!heightmap) return;
+    const positions = meshRef.current.geometry?.attributes?.position;
+    if (!positions) return;
+    for (let i = 0; i < positions.count; i++) {{
+      positions.setZ(i, (heightmap[i] || 0) * 25);
+    }}
+    positions.needsUpdate = true;
+    meshRef.current.geometry?.computeVertexNormals?.();
+  }};
+
+  updateMesh();
+  model.on("change:heightmap", updateMesh);
+  return () => model.off?.("change:heightmap", updateMesh);
+}}, []);
+```
+""")
+
+        return "\n".join(sections)
+
+    def _clean_code(self, code: str) -> str:
+        code = re.sub(r"```(?:javascript|jsx?|typescript|tsx?)?\s*\n?", "", code)
+        code = re.sub(r"\n?```\s*", "", code)
+        return code.strip()

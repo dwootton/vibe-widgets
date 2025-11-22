@@ -13,8 +13,6 @@ from IPython.display import display
 
 from vibe_widget.code_parser import CodeStreamParser
 from vibe_widget.llm.claude import ClaudeProvider
-from vibe_widget.progress import ProgressWidget
-from vibe_widget.data_parser.preprocessor import DataPreprocessor
 from vibe_widget.data_parser.data_profile import DataProfile
 
 
@@ -50,71 +48,51 @@ def _clean_for_json(obj: Any) -> Any:
 class VibeWidget(anywidget.AnyWidget):
     data = traitlets.List([]).tag(sync=True)
     description = traitlets.Unicode("").tag(sync=True)
-    data_profile_md = traitlets.Unicode("").tag(sync=True)  # For debugging/display
+    data_profile_md = traitlets.Unicode("").tag(sync=True)
+    
+    status = traitlets.Unicode("idle").tag(sync=True)
+    logs = traitlets.List([]).tag(sync=True)
+    code = traitlets.Unicode("").tag(sync=True)
+    
+    error_message = traitlets.Unicode("").tag(sync=True)
+    retry_count = traitlets.Int(0).tag(sync=True)
 
     @classmethod
     def _create_with_dynamic_traits(
         cls,
-        description: str, 
-        df: pd.DataFrame, 
-        api_key: str | None = None, 
+        description: str,
+        df: pd.DataFrame,
+        api_key: str | None = None,
         model: str = "claude-haiku-4-5-20251001",
         use_preprocessor: bool = True,
         context: dict | None = None,
         show_progress: bool = True,
         exports: dict[str, str] | None = None,
         imports: dict[str, Any] | None = None,
-        **kwargs
-    ):
-        """
-        Create a VibeWidget with optional dynamic traits for exports/imports
-        """
-        # If we have exports or imports, create a dynamic class
-        if exports or imports:
-            # Create dynamic traits dict
-            dynamic_traits = {}
-            for export_name in (exports or {}).keys():
-                dynamic_traits[export_name] = traitlets.Any(default_value=None).tag(sync=True)
-            for import_name in (imports or {}).keys():
-                if import_name not in dynamic_traits:
-                    dynamic_traits[import_name] = traitlets.Any(default_value=None).tag(sync=True)
-            
-            # Create a new class with these traits
-            DynamicWidgetClass = type(
-                'DynamicVibeWidget',
-                (cls,),
-                dynamic_traits
-            )
-            widget_class = DynamicWidgetClass
-        else:
-            widget_class = cls
-        
-        # Build init_values dict with initial values for traits
-        init_values = {}
-        
-        # Initialize export traits with None (they'll be updated by JS)
-        for export_name in (exports or {}).keys():
+        **kwargs,
+    ) -> "VibeWidget":
+        """Return a widget instance that includes traitlets for declared exports/imports."""
+        exports = exports or {}
+        imports = imports or {}
+
+        dynamic_traits: dict[str, traitlets.TraitType] = {}
+        for export_name in exports.keys():
+            dynamic_traits[export_name] = traitlets.Any(default_value=None).tag(sync=True)
+        for import_name in imports.keys():
+            if import_name not in dynamic_traits:
+                dynamic_traits[import_name] = traitlets.Any(default_value=None).tag(sync=True)
+
+        widget_class = (
+            type("DynamicVibeWidget", (cls,), dynamic_traits) if dynamic_traits else cls
+        )
+
+        init_values: dict[str, Any] = {}
+        for export_name in exports.keys():
             init_values[export_name] = None
-        
-        # Initialize import traits with values from source widgets
-        for import_name, import_source in (imports or {}).items():
-            # Check if it's a widget object (has trait_names method)
-            if hasattr(import_source, 'trait_names') and hasattr(import_source, import_name):
-                # It's a widget - get the current value of the trait
-                init_values[import_name] = import_source._trait_values.get(import_name, None)
-            elif hasattr(import_source, "__self__") and hasattr(import_source.__self__, import_name):
-                # It's a trait reference from another widget (bound method style)
-                init_values[import_name] = import_source.__self__._trait_values.get(import_name, None)
-            else:
-                # It's a direct value
-                init_values[import_name] = import_source
-        
-        # Create instance - use normal instantiation, passing a special flag
-        # to skip the normal initialization
-        instance = widget_class.__new__(widget_class)
-        
-        # Now run custom initialization
-        instance._custom_init(
+        for import_name, import_source in imports.items():
+            init_values[import_name] = cls._initial_import_value(import_name, import_source)
+
+        return widget_class(
             description=description,
             df=df,
             api_key=api_key,
@@ -124,14 +102,35 @@ class VibeWidget(anywidget.AnyWidget):
             show_progress=show_progress,
             exports=exports,
             imports=imports,
-            init_values=init_values,
-            **kwargs
+            **init_values,
+            **kwargs,
         )
-        
-        return instance
-    
-    def _custom_init(
-        self,
+
+    @staticmethod
+    def _initial_import_value(import_name: str, import_source: Any) -> Any:
+        """Figure out an initial default value for an imported trait."""
+        if hasattr(import_source, "trait_names") and hasattr(import_source, import_name):
+            return getattr(import_source, import_name)
+        if hasattr(import_source, "__self__") and hasattr(import_source.__self__, import_name):
+            return getattr(import_source.__self__, import_name)
+        return import_source
+
+    def _serialize_imports_for_prompt(self) -> dict[str, str]:
+        """Convert import sources to human-readable descriptions for the LLM prompt."""
+        serialized: dict[str, str] = {}
+        for name, source in (self._imports or {}).items():
+            if isinstance(source, str):
+                serialized[name] = source
+            elif hasattr(source, "__class__"):
+                serialized[name] = (
+                    f"Trait '{name}' from widget {source.__class__.__name__}"
+                )
+            else:
+                serialized[name] = repr(source)
+        return serialized
+
+    def __init__(
+        self, 
         description: str, 
         df: pd.DataFrame, 
         api_key: str | None = None, 
@@ -141,38 +140,61 @@ class VibeWidget(anywidget.AnyWidget):
         show_progress: bool = True,
         exports: dict[str, str] | None = None,
         imports: dict[str, Any] | None = None,
-        init_values: dict = None,
         **kwargs
     ):
         """
-        Custom initialization that runs after __new__
+        Create a VibeWidget with optional intelligent preprocessing
+        
+        Args:
+            description: Natural language description of desired visualization
+            df: DataFrame to visualize
+            api_key: Anthropic API key
+            model: Claude model to use
+            use_preprocessor: Whether to use the intelligent preprocessor (recommended)
+            context: Additional context about the data (domain, purpose, etc.)
+            show_progress: Whether to show progress widget (deprecated - now uses internal state)
+            exports: Dict of trait_name -> description for state this widget exposes
+            imports: Dict of trait_name -> source widget/value for state this widget consumes
+            **kwargs: Additional widget parameters
         """
-        # Store exports/imports metadata for prompt generation
+        parser = CodeStreamParser()
         self._exports = exports or {}
         self._imports = imports or {}
         
-        progress = None
-        parser = CodeStreamParser()
+        app_wrapper_path = Path(__file__).parent / "app_wrapper.js"
+        self._esm = app_wrapper_path.read_text()
+        
+        data_json = df.to_dict(orient="records")
+        data_json = _clean_for_json(data_json)
+        
+        super().__init__(
+            data=data_json,
+            description=description,
+            data_profile_md="",
+            status="generating",
+            logs=[],
+            code="",
+            error_message="",
+            retry_count=0,
+            **kwargs
+        )
+        
+        self.observe(self._on_error, names='error_message')
         
         if show_progress:
-            progress = ProgressWidget()
-            display(progress)
+            try:
+                from IPython.display import display
+                display(self)
+            except ImportError:
+                pass
         
         try:
-            # Step 1: Analyze schema
-            if progress:
-                progress.add_timeline_item(
-                    "Analyzing data",
-                    f"Schema: {df.shape[0]} rows × {df.shape[1]} columns",
-                    icon="○",
-                    complete=False
-                )
-                progress.add_micro_bubble("Analyzing data schema...")
-                progress.update_progress(10)
+            self.logs = [f"Analyzing data: {df.shape[0]} rows × {df.shape[1]} columns"]
             
-            llm_provider = ClaudeProvider(api_key=api_key, model=model)
+            self.llm_provider = ClaudeProvider(api_key=api_key, model=model)
+            self.data_info = self._extract_data_info(df)
+            llm_provider = self.llm_provider
             
-            # Step 2: Preprocess data to create rich profile
             data_profile = context 
             if isinstance(context, DataProfile):
                 enhanced_description = f"{description}\n\nData Profile: {data_profile.to_markdown()}"
@@ -181,93 +203,58 @@ class VibeWidget(anywidget.AnyWidget):
                 enhanced_description = f"{description}\n\n======================\n\n CONTEXT::DATA_INFO:\n\n {data_info}"
                 data_profile = None
             
-            if progress:
-                progress.add_timeline_item(
-                    "Schema analyzed",
-                    f"Columns: {', '.join(df.columns.tolist()[:3])}{'...' if len(df.columns) > 3 else ''}",
-                    icon="✓",
-                    complete=True
-                )
+            self.logs = self.logs + [f"Columns: {', '.join(df.columns.tolist()[:3])}{'...' if len(df.columns) > 3 else ''}"]
             
-            # Step 3: Generate widget code with enhanced context
-            if progress:
-                progress.add_timeline_item(
-                    "Generating code",
-                    "Streaming from Claude API...",
-                    icon="○",
-                    complete=False
-                )
-                progress.add_micro_bubble("Generating widget code...")
-                progress.update_progress(20)
+            self.logs = self.logs + ["Generating widget code..."]
             
             data_info = self._extract_data_info(df)
-            
-            # Add exports/imports to data_info for LLM
             data_info["exports"] = self._exports
-            data_info["imports"] = {k: v for k, v in (self._imports or {}).items()}
+            data_info["imports"] = self._serialize_imports_for_prompt()
+            self.data_info = data_info
             
-            # Batch updates to reduce UI thrashing
             chunk_buffer = []
             update_counter = 0
+            last_pattern_count = 0
             
             def stream_callback(chunk: str):
-                nonlocal update_counter
-                
-                if not progress:
-                    return
+                nonlocal update_counter, last_pattern_count
                 
                 chunk_buffer.append(chunk)
                 update_counter += 1
                 
-                # Parse chunk for landmarks
                 updates = parser.parse_chunk(chunk)
                 
-                # Only update UI every 50 chunks OR when new pattern detected
                 should_update = (
-                    update_counter % 50 == 0 or 
+                    update_counter % 30 == 0 or 
                     parser.has_new_pattern() or
                     len(''.join(chunk_buffer)) > 500
                 )
                 
                 if should_update:
-                    # Batch update console
                     if chunk_buffer:
-                        progress.add_stream(''.join(chunk_buffer))
+                        snippet = ''.join(chunk_buffer)[:100]
                         chunk_buffer.clear()
                     
-                    # Add micro-bubbles only for new patterns
                     for update in updates:
                         if update["type"] == "micro_bubble":
-                            progress.add_micro_bubble(update["message"])
-                        elif update["type"] == "action_tile":
-                            progress.add_action_tile(update["icon"], update["message"])
+                            current_logs = list(self.logs)
+                            current_logs.append(update["message"])
+                            self.logs = current_logs
                     
-                    # Update progress bar based on code generation progress
-                    current_progress = 20 + (parser.get_progress() * 60)
-                    progress.update_progress(current_progress)
+                    current_pattern_count = len(parser.detected)
+                    if current_pattern_count == last_pattern_count and update_counter % 100 == 0:
+                        current_logs = list(self.logs)
+                        current_logs.append(f"Generating code... ({update_counter} chunks)")
+                        self.logs = current_logs
+                    last_pattern_count = current_pattern_count
             
             widget_code = llm_provider.generate_widget_code(
                 enhanced_description, 
                 data_info,
-                progress_callback=stream_callback if progress else None
+                progress_callback=stream_callback
             )
             
-            # Flush any remaining buffer
-            if progress and chunk_buffer:
-                progress.add_stream(''.join(chunk_buffer))
-            
-            if progress:
-                progress.add_timeline_item(
-                    "Code generated",
-                    f"Widget code ready ({len(widget_code)} chars)",
-                    icon="✓",
-                    complete=True
-                )
-            
-            # Step 4: Cache and store widget
-            if progress:
-                progress.add_micro_bubble("Saving widget...")
-                progress.update_progress(90)
+            self.logs = self.logs + [f"Code generated: {len(widget_code)} characters"]
             
             widget_hash = hashlib.md5(f"{description}{df.shape}".encode()).hexdigest()[:8]
             widget_dir = Path(__file__).parent / "widgets"
@@ -276,36 +263,46 @@ class VibeWidget(anywidget.AnyWidget):
             
             widget_file.write_text(widget_code)
             
-            if progress:
-                progress.add_timeline_item(
-                    "Widget saved",
-                    f"Saved to widget_{widget_hash}.js",
-                    icon="✓",
-                    complete=True
-                )
-                progress.update_progress(100)
-                progress.complete()
-            
-            self._esm = widget_code
-            
-            # Convert data to JSON and clean for serialization
-            data_json = df.to_dict(orient="records")
-            data_json = _clean_for_json(data_json)
-            
-            # Update init_values with data
-            init_values.update({
-                "data": data_json,
-                "description": enhanced_description,
-                "data_profile_md": data_profile.to_markdown() if data_profile else "",
-            })
-            
-            # Initialize widget using anywidget's __init__
-            anywidget.AnyWidget.__init__(self, **init_values, **kwargs)
+            self.logs = self.logs + [f"Widget saved: widget_{widget_hash}.js"]
+            self.code = widget_code
+            self.status = "ready"
+            self.description = enhanced_description
+            self.data_profile_md = data_profile.to_markdown() if data_profile else ""
             
         except Exception as e:
-            if progress:
-                progress.error(str(e))
+            self.status = "error"
+            self.logs = self.logs + [f"Error: {str(e)}"]
             raise
+    
+    def _on_error(self, change):
+        """Called when frontend reports a runtime error"""
+        error_msg = change['new']
+        
+        if not error_msg or self.retry_count >= 2:
+            return
+        
+        self.retry_count += 1
+        self.status = 'generating'
+        
+        error_preview = error_msg.split('\n')[0][:100]
+        self.logs = self.logs + [f"Error detected (attempt {self.retry_count}): {error_preview}"]
+        self.logs = self.logs + ["Asking LLM to fix the error..."]
+        
+        try:
+            fixed_code = self.llm_provider.fix_code_error(
+                self.code,
+                error_msg,
+                self.data_info
+            )
+            
+            self.logs = self.logs + ["Code fixed, retrying..."]
+            self.code = fixed_code
+            self.status = 'ready'
+            self.error_message = ""
+        except Exception as e:
+            self.status = "error"
+            self.logs = self.logs + [f"Fix attempt failed: {str(e)}"]
+            self.error_message = ""
     
     def _profile_to_info(self, profile) -> dict[str, Any]:
         """Convert DataProfile to info dict for LLM"""
@@ -442,7 +439,7 @@ class VibeWidget(anywidget.AnyWidget):
 
 def create(
     description: str,
-    df: pd.DataFrame | str | Path = None,
+    df: pd.DataFrame | str | Path | None = None,
     api_key: str | None = None,
     model: str = "claude-haiku-4-5-20251001",
     context: dict | DataProfile | None = None,
@@ -456,13 +453,13 @@ def create(
     
     Args:
         description: Natural language description of the visualization
-        df: DataFrame to visualize OR path to data file (CSV, NetCDF, GeoJSON, etc.) OR None if using only imports
+        df: DataFrame to visualize OR path to data file (CSV, NetCDF, GeoJSON, etc.) OR None when using imports only
         api_key: Anthropic API key (or set ANTHROPIC_API_KEY env var)
         model: Claude model to use
         context: Additional context (dict with domain/purpose/etc.) OR DataProfile object
         use_preprocessor: Whether to use intelligent preprocessing (recommended)
         exports: Dict of {trait_name: description} for traits this widget exposes
-        imports: Dict of {trait_name: source} where source is another widget's trait or value
+        imports: Dict of {trait_name: source} where source is another widget's trait or literal value
     
     Returns:
         VibeWidget instance
@@ -481,19 +478,9 @@ def create(
         ...     }
         ... )
         
-        >>> # With exports (widget exposes selected_indices)
-        >>> scatter = create(
-        ...     "scatter plot with brush selection",
-        ...     df,
-        ...     exports={"selected_indices": "list of selected point indices"}
-        ... )
-        
-        >>> # With imports (widget consumes selected_indices from scatter)
-        >>> histogram = create(
-        ...     "histogram filtered by selection",
-        ...     df,
-        ...     imports={"selected_indices": scatter}
-        ... )
+        >>> # With pre-computed profile
+        >>> profile = preprocess_data(df, api_key=api_key)
+        >>> widget = create("visualize patterns", df, context=profile)
         
         >>> # From file (auto-detects format)
         >>> widget = create(
@@ -742,15 +729,14 @@ def create(
         if len(df) > 1000:
             df = df.sample(1000)
     
-    # Handle None data case (widget using only imports)
+    # Handle None data scenario (widget driven solely by imports)
     if df is None:
-        df = pd.DataFrame()  # Empty DataFrame
-    
-    # Create widget using factory method
+        df = pd.DataFrame()
+
     widget = VibeWidget._create_with_dynamic_traits(
-        description=description, 
-        df=df, 
-        api_key=api_key, 
+        description=description,
+        df=df,
+        api_key=api_key,
         model=model,
         use_preprocessor=use_preprocessor,
         context=context,
@@ -758,33 +744,28 @@ def create(
         exports=exports,
         imports=imports,
     )
-    
-    # Link imported traits to their sources
+
+    # Link imported traits so they stay synchronized automatically
     if imports:
         for import_name, import_source in imports.items():
-            # Check if it's a widget object (has trait_names method)
-            if hasattr(import_source, 'trait_names') and hasattr(import_source, import_name):
-                # It's a widget - link to its trait
-                source_widget = import_source
-                source_trait_name = import_name
-                
+            if hasattr(import_source, "trait_names") and hasattr(import_source, import_name):
                 try:
-                    link = traitlets.link((source_widget, source_trait_name), (widget, import_name))
-                    print(f"✓ Linked {import_name}: {source_widget.__class__.__name__} -> {widget.__class__.__name__}")
-                except Exception as e:
-                    print(f"✗ Failed to link {import_name}: {e}")
+                    traitlets.link((import_source, import_name), (widget, import_name))
+                    print(
+                        f"✓ Linked {import_name}: {import_source.__class__.__name__} -> {widget.__class__.__name__}"
+                    )
+                except Exception as exc:  # pragma: no cover - debug aid
+                    print(f"✗ Failed to link {import_name}: {exc}")
             elif hasattr(import_source, "__self__"):
-                # It's a bound method or trait reference
                 source_widget = import_source.__self__
-                
                 if hasattr(source_widget, import_name):
-                    source_trait_name = import_name
-                    
                     try:
-                        link = traitlets.link((source_widget, source_trait_name), (widget, import_name))
-                        print(f"✓ Linked {import_name}: {source_widget.__class__.__name__} -> {widget.__class__.__name__}")
-                    except Exception as e:
-                        print(f"✗ Failed to link {import_name}: {e}")
+                        traitlets.link((source_widget, import_name), (widget, import_name))
+                        print(
+                            f"✓ Linked {import_name}: {source_widget.__class__.__name__} -> {widget.__class__.__name__}"
+                        )
+                    except Exception as exc:  # pragma: no cover - debug aid
+                        print(f"✗ Failed to link {import_name}: {exc}")
     
     # Explicitly display the widget to ensure it renders
     try:
