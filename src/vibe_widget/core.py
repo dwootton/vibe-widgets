@@ -12,7 +12,8 @@ import traitlets
 from IPython.display import display
 
 from vibe_widget.code_parser import CodeStreamParser
-from vibe_widget.llm.claude import ClaudeProvider
+from vibe_widget.llm import LiteLLMProvider
+from vibe_widget.config import Config, get_global_config
 from vibe_widget.data_parser.data_profile import DataProfile
 
 
@@ -62,8 +63,7 @@ class VibeWidget(anywidget.AnyWidget):
         cls,
         description: str,
         df: pd.DataFrame,
-        api_key: str | None = None,
-        model: str = "claude-haiku-4-5-20251001",
+        config: Config | None = None,
         use_preprocessor: bool = True,
         context: dict | None = None,
         show_progress: bool = True,
@@ -95,8 +95,7 @@ class VibeWidget(anywidget.AnyWidget):
         return widget_class(
             description=description,
             df=df,
-            api_key=api_key,
-            model=model,
+            config=config,
             use_preprocessor=use_preprocessor,
             context=context,
             show_progress=show_progress,
@@ -132,9 +131,8 @@ class VibeWidget(anywidget.AnyWidget):
     def __init__(
         self, 
         description: str, 
-        df: pd.DataFrame, 
-        api_key: str | None = None, 
-        model: str = "claude-haiku-4-5-20251001",
+        df: pd.DataFrame,
+        config: Config | None = None,
         use_preprocessor: bool = True,
         context: dict | None = None,
         show_progress: bool = True,
@@ -148,11 +146,10 @@ class VibeWidget(anywidget.AnyWidget):
         Args:
             description: Natural language description of desired visualization
             df: DataFrame to visualize
-            api_key: Anthropic API key
-            model: Claude model to use
+            config: Configuration object with model settings (uses global config if not provided)
             use_preprocessor: Whether to use the intelligent preprocessor (recommended)
             context: Additional context about the data (domain, purpose, etc.)
-            show_progress: Whether to show progress widget (deprecated - now uses internal state)
+            show_progress: Whether to show progress widget
             exports: Dict of trait_name -> description for state this widget exposes
             imports: Dict of trait_name -> source widget/value for state this widget consumes
             **kwargs: Additional widget parameters
@@ -191,7 +188,15 @@ class VibeWidget(anywidget.AnyWidget):
         try:
             self.logs = [f"Analyzing data: {df.shape[0]} rows × {df.shape[1]} columns"]
             
-            self.llm_provider = ClaudeProvider(api_key=api_key, model=model)
+            # Use provided config or global config
+            if config is None:
+                config = get_global_config()
+            
+            # Validate configuration has what we need
+            config.validate()
+            
+            # Create LiteLLM provider
+            self.llm_provider = LiteLLMProvider(config.model, config.api_key)
             self.data_info = self._extract_data_info(df)
             llm_provider = self.llm_provider
             
@@ -440,8 +445,7 @@ class VibeWidget(anywidget.AnyWidget):
 def create(
     description: str,
     df: pd.DataFrame | str | Path | None = None,
-    api_key: str | None = None,
-    model: str = "claude-haiku-4-5-20251001",
+    config: Config | None = None,
     context: dict | DataProfile | None = None,
     use_preprocessor: bool = True,
     show_progress: bool = True,
@@ -454,8 +458,7 @@ def create(
     Args:
         description: Natural language description of the visualization
         df: DataFrame to visualize OR path to data file (CSV, NetCDF, GeoJSON, etc.) OR None when using imports only
-        api_key: Anthropic API key (or set ANTHROPIC_API_KEY env var)
-        model: Claude model to use
+        config: Configuration object with model settings (uses global config if not provided)
         context: Additional context (dict with domain/purpose/etc.) OR DataProfile object
         use_preprocessor: Whether to use intelligent preprocessing (recommended)
         exports: Dict of {trait_name: description} for traits this widget exposes
@@ -497,7 +500,7 @@ def create(
         if isinstance(context, DataProfile):
             profile = context
         else:
-            profile = preprocess_data(df, api_key=api_key, context=context)
+            profile = preprocess_data(df, api_key=config.api_key, context=context)
         
         # For now, we need to convert to DataFrame for the widget
         # This is a limitation we might want to address
@@ -736,8 +739,7 @@ def create(
     widget = VibeWidget._create_with_dynamic_traits(
         description=description,
         df=df,
-        api_key=api_key,
-        model=model,
+        config=config,
         use_preprocessor=use_preprocessor,
         context=context,
         show_progress=show_progress,
