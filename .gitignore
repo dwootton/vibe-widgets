@@ -63,6 +63,10 @@ output/
 # Vibe widget cache
 .vibe_cache/
 
+# Node modules
+node_modules/
+**/node_modules/
+
 
 
 /venv311/
