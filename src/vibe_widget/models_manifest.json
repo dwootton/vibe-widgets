@@ -1,10 +1,11 @@
 {
   "openai": {
     "premium": [
-      { "id": "gpt-5" },
+      { "id": "gpt-5.1-2025-11-13" },
       { "id": "o3-pro" }
     ],
     "standard": [
+      { "id": "gpt-5-mini-2025-08-07" },
       { "id": "gpt-4.1" },
       { "id": "gpt-4o" },
       { "id": "gpt-4o-mini" }
