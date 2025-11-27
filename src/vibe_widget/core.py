@@ -11,8 +11,10 @@ import pandas as pd
 import traitlets
 
 from vibe_widget.code_parser import CodeStreamParser
-from vibe_widget.llm.claude import ClaudeProvider
+from vibe_widget.llm import get_provider
 from vibe_widget.data_parser.data_profile import DataProfile
+from vibe_widget.config import get_global_config, Config
+from vibe_widget.widget_store import WidgetStore
 
 
 def _clean_for_json(obj: Any) -> Any:
@@ -189,7 +191,7 @@ class VibeWidget(anywidget.AnyWidget):
         try:
             self.logs = [f"Analyzing data: {df.shape[0]} rows × {df.shape[1]} columns"]
             
-            self.llm_provider = ClaudeProvider(api_key=api_key, model=model)
+            self.llm_provider = get_provider(model, api_key)
             self.data_info = self._extract_data_info(df)
             llm_provider = self.llm_provider
             
@@ -256,21 +258,31 @@ class VibeWidget(anywidget.AnyWidget):
                     current_logs.append(display_msg)
                     self.logs = current_logs
             
-            # Generate code
-            widget_code, processed_df = self.orchestrator.generate(
-                description=description,
-                df=df,
-                exports=self._exports,
-                imports=imports_serialized,
-                progress_callback=stream_callback,
+            # Serialize imports for provider
+            imports_serialized = {}
+            if self._imports:
+                for import_name, import_value in self._imports.items():
+                    if hasattr(import_value, 'value'):
+                        imports_serialized[import_name] = import_value.value
+                    else:
+                        imports_serialized[import_name] = str(import_value)
+            
+            # Generate code using the LLM provider directly
+            widget_code = llm_provider.generate_widget_code(
+                description=enhanced_description,
+                data_info=self.data_info,
+                progress_callback=lambda msg: stream_callback("chunk", msg) if show_progress else None,
             )
             
-            self._pipeline_artifacts = self.orchestrator.get_pipeline_artifacts()
+            # No need for pipeline artifacts with direct provider
+            self._pipeline_artifacts = {}
+            processed_df = df
             current_logs = list(self.logs)
             current_logs.append(f"Code generated: {len(widget_code)} characters")
             self.logs = current_logs
             
             # Save to widget store
+            store = WidgetStore()
             notebook_path = store.get_notebook_path()
             widget_entry = store.save(
                 widget_code=widget_code,
@@ -363,6 +375,7 @@ def create(
     show_progress: bool = True,
     exports: dict[str, str] | None = None,
     imports: dict[str, Any] | None = None,
+    config: Config | None = None,
 ) -> VibeWidget:
     """
     Create a VibeWidget visualization with automatic data processing.
@@ -376,6 +389,7 @@ def create(
         use_preprocessor: Whether to use intelligent preprocessing (recommended)
         exports: Dict of {trait_name: description} for traits this widget exposes
         imports: Dict of {trait_name: source} where source is another widget's trait
+        config: Optional Config object with model settings (overrides api_key and model parameters)
     
     Returns:
         VibeWidget instance
@@ -386,6 +400,21 @@ def create(
         >>> widget = create("extract and visualize tables", "report.pdf")
         >>> widget = create("visualize top stories", "https://news.ycombinator.com")
     """
+    # Use config values if provided
+    if config:
+        if not api_key:
+            api_key = config.api_key
+        if model == "claude-haiku-4-5-20251001":  # Only override if using default
+            model = config.model
+    
+    # If still no config, try to get global config
+    elif not api_key or model == "claude-haiku-4-5-20251001":
+        global_config = get_global_config()
+        if not api_key:
+            api_key = global_config.api_key
+        if model == "claude-haiku-4-5-20251001":  # Only override if using default
+            model = global_config.model
+    
     # Handle file paths
     if isinstance(df, (str, Path)):
         from vibe_widget.data_parser.preprocessor import preprocess_data
@@ -640,7 +669,7 @@ def create(
         show_progress=show_progress,
         exports=exports,
         imports=imports,
-        data_var_name=data_var_name,
+        data_var_name=None,  # Set to None as it's not a parameter of create()
     )
 
     # Link imported traits

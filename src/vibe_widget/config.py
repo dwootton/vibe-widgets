@@ -246,8 +246,13 @@ def config(
             if api_key is None:
                 _global_config.api_key = _global_config._get_api_key_from_env()
         
+        # Handle API key: if provided, use it; otherwise reload from env
         if api_key is not None:
             _global_config.api_key = api_key
+        else:
+            # When api_key is None (not provided), always reload from environment
+            # This ensures we pick up the right key for the current model
+            _global_config.api_key = _global_config._get_api_key_from_env()
         
         if temperature is not None:
             _global_config.temperature = temperature

@@ -76,4 +76,7 @@ node_modules/
 
 /tests/
 
-/planning
+/planningtester.ipynb
+
+/planning/
+.vibewidget/
