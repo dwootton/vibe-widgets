@@ -1,7 +1,7 @@
 """
-Updated VibeWidget core with integrated preprocessor
+Core VibeWidget implementation.
+Clean, robust widget generation without legacy profile logic.
 """
-import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -9,11 +9,9 @@ import anywidget
 import numpy as np
 import pandas as pd
 import traitlets
-from IPython.display import display
 
 from vibe_widget.code_parser import CodeStreamParser
-from vibe_widget.llm.provider_factory import get_provider
-from vibe_widget.config import Config, get_global_config
+from vibe_widget.llm.claude import ClaudeProvider
 from vibe_widget.data_parser.data_profile import DataProfile
 
 
@@ -27,17 +25,14 @@ def _clean_for_json(obj: Any) -> Any:
     elif isinstance(obj, list):
         return [_clean_for_json(item) for item in obj]
     elif isinstance(obj, pd.Timestamp):
-        # Handle pandas Timestamp (including NaT)
         if pd.isna(obj):
             return None
         return obj.isoformat()
     elif pd.isna(obj):
-        # Handle other pandas NA types (NaN, NaT, etc.)
         return None
     elif isinstance(obj, float) and (np.isnan(obj) or np.isinf(obj)):
-        # Handle numpy NaN and Inf
         return None
-    elif hasattr(obj, 'isoformat'):  # datetime objects
+    elif hasattr(obj, 'isoformat'):
         try:
             return obj.isoformat()
         except (ValueError, AttributeError):
@@ -47,14 +42,13 @@ def _clean_for_json(obj: Any) -> Any:
 
 
 class VibeWidget(anywidget.AnyWidget):
+    """AnyWidget-based visualization widget with LLM code generation."""
+    
     data = traitlets.List([]).tag(sync=True)
     description = traitlets.Unicode("").tag(sync=True)
-    data_profile_md = traitlets.Unicode("").tag(sync=True)
-    
     status = traitlets.Unicode("idle").tag(sync=True)
     logs = traitlets.List([]).tag(sync=True)
     code = traitlets.Unicode("").tag(sync=True)
-    
     error_message = traitlets.Unicode("").tag(sync=True)
     retry_count = traitlets.Int(0).tag(sync=True)
 
@@ -63,12 +57,14 @@ class VibeWidget(anywidget.AnyWidget):
         cls,
         description: str,
         df: pd.DataFrame,
-        config: Config | None = None,
+        api_key: str | None = None,
+        model: str = "claude-haiku-4-5-20251001",
         use_preprocessor: bool = True,
         context: dict | None = None,
         show_progress: bool = True,
         exports: dict[str, str] | None = None,
         imports: dict[str, Any] | None = None,
+        data_var_name: str | None = None,
         **kwargs,
     ) -> "VibeWidget":
         """Return a widget instance that includes traitlets for declared exports/imports."""
@@ -95,12 +91,14 @@ class VibeWidget(anywidget.AnyWidget):
         return widget_class(
             description=description,
             df=df,
-            config=config,
+            api_key=api_key,
+            model=model,
             use_preprocessor=use_preprocessor,
             context=context,
             show_progress=show_progress,
             exports=exports,
             imports=imports,
+            data_var_name=data_var_name,
             **init_values,
             **kwargs,
         )
@@ -121,9 +119,7 @@ class VibeWidget(anywidget.AnyWidget):
             if isinstance(source, str):
                 serialized[name] = source
             elif hasattr(source, "__class__"):
-                serialized[name] = (
-                    f"Trait '{name}' from widget {source.__class__.__name__}"
-                )
+                serialized[name] = f"Trait '{name}' from widget {source.__class__.__name__}"
             else:
                 serialized[name] = repr(source)
         return serialized
@@ -131,32 +127,38 @@ class VibeWidget(anywidget.AnyWidget):
     def __init__(
         self, 
         description: str, 
-        df: pd.DataFrame,
-        config: Config | None = None,
+        df: pd.DataFrame, 
+        api_key: str | None = None, 
+        model: str = "claude-haiku-4-5-20251001",
         use_preprocessor: bool = True,
         context: dict | None = None,
         show_progress: bool = True,
         exports: dict[str, str] | None = None,
         imports: dict[str, Any] | None = None,
+        data_var_name: str | None = None,
         **kwargs
     ):
         """
-        Create a VibeWidget with optional intelligent preprocessing
+        Create a VibeWidget with automatic code generation.
         
         Args:
             description: Natural language description of desired visualization
             df: DataFrame to visualize
-            config: Configuration object with model settings (uses global config if not provided)
+            api_key: Anthropic API key
+            model: Claude model to use
             use_preprocessor: Whether to use the intelligent preprocessor (recommended)
             context: Additional context about the data (domain, purpose, etc.)
-            show_progress: Whether to show progress widget
+            show_progress: Whether to show progress widget (deprecated - now uses internal state)
             exports: Dict of trait_name -> description for state this widget exposes
             imports: Dict of trait_name -> source widget/value for state this widget consumes
+            data_var_name: Variable name of the data parameter for cache key
             **kwargs: Additional widget parameters
         """
         parser = CodeStreamParser()
         self._exports = exports or {}
         self._imports = imports or {}
+        self._pipeline_artifacts = {}
+        self._widget_metadata = None
         
         app_wrapper_path = Path(__file__).parent / "app_wrapper.js"
         self._esm = app_wrapper_path.read_text()
@@ -167,7 +169,6 @@ class VibeWidget(anywidget.AnyWidget):
         super().__init__(
             data=data_json,
             description=description,
-            data_profile_md="",
             status="generating",
             logs=[],
             code="",
@@ -188,15 +189,7 @@ class VibeWidget(anywidget.AnyWidget):
         try:
             self.logs = [f"Analyzing data: {df.shape[0]} rows × {df.shape[1]} columns"]
             
-            # Use provided config or global config
-            if config is None:
-                config = get_global_config()
-            
-            # Validate configuration has what we need
-            config.validate()
-            
-            # Create LLM provider (pass mode for premium support)
-            self.llm_provider = get_provider(config.model, config.api_key, config.mode)
+            self.llm_provider = ClaudeProvider(api_key=api_key, model=model)
             self.data_info = self._extract_data_info(df)
             llm_provider = self.llm_provider
             
@@ -212,67 +205,94 @@ class VibeWidget(anywidget.AnyWidget):
             
             self.logs = self.logs + ["Generating widget code..."]
             
-            data_info = self._extract_data_info(df)
-            data_info["exports"] = self._exports
-            data_info["imports"] = self._serialize_imports_for_prompt()
-            self.data_info = data_info
-            
             chunk_buffer = []
             update_counter = 0
             last_pattern_count = 0
             
-            def stream_callback(chunk: str):
+            def stream_callback(event_type: str, message: str):
+                """Handle progress events from orchestrator."""
                 nonlocal update_counter, last_pattern_count
                 
-                chunk_buffer.append(chunk)
-                update_counter += 1
+                event_messages = {
+                    "step": f"➤ {message}",
+                    "thinking": f"💭 {message[:150]}...",
+                    "complete": f"✓ {message}",
+                    "error": f"✘ {message}",
+                    "chunk": message,
+                }
                 
-                updates = parser.parse_chunk(chunk)
+                display_msg = event_messages.get(event_type, message)
                 
-                should_update = (
-                    update_counter % 30 == 0 or 
-                    parser.has_new_pattern() or
-                    len(''.join(chunk_buffer)) > 500
-                )
-                
-                if should_update:
-                    if chunk_buffer:
-                        snippet = ''.join(chunk_buffer)[:100]
-                        chunk_buffer.clear()
+                if event_type == "chunk":
+                    chunk_buffer.append(message)
+                    update_counter += 1
                     
-                    for update in updates:
-                        if update["type"] == "micro_bubble":
+                    updates = parser.parse_chunk(message)
+                    
+                    should_update = (
+                        update_counter % 30 == 0 or 
+                        parser.has_new_pattern() or
+                        len(''.join(chunk_buffer)) > 500
+                    )
+                    
+                    if should_update:
+                        if chunk_buffer:
+                            chunk_buffer.clear()
+                        
+                        for update in updates:
+                            if update["type"] == "micro_bubble":
+                                current_logs = list(self.logs)
+                                current_logs.append(update["message"])
+                                self.logs = current_logs
+                        
+                        current_pattern_count = len(parser.detected)
+                        if current_pattern_count == last_pattern_count and update_counter % 100 == 0:
                             current_logs = list(self.logs)
-                            current_logs.append(update["message"])
+                            current_logs.append(f"Generating code... ({update_counter} chunks)")
                             self.logs = current_logs
-                    
-                    current_pattern_count = len(parser.detected)
-                    if current_pattern_count == last_pattern_count and update_counter % 100 == 0:
-                        current_logs = list(self.logs)
-                        current_logs.append(f"Generating code... ({update_counter} chunks)")
-                        self.logs = current_logs
-                    last_pattern_count = current_pattern_count
+                        last_pattern_count = current_pattern_count
+                else:
+                    current_logs = list(self.logs)
+                    current_logs.append(display_msg)
+                    self.logs = current_logs
             
-            widget_code = llm_provider.generate_widget_code(
-                enhanced_description, 
-                data_info,
-                progress_callback=stream_callback
+            # Generate code
+            widget_code, processed_df = self.orchestrator.generate(
+                description=description,
+                df=df,
+                exports=self._exports,
+                imports=imports_serialized,
+                progress_callback=stream_callback,
             )
             
-            self.logs = self.logs + [f"Code generated: {len(widget_code)} characters"]
+            self._pipeline_artifacts = self.orchestrator.get_pipeline_artifacts()
+            current_logs = list(self.logs)
+            current_logs.append(f"Code generated: {len(widget_code)} characters")
+            self.logs = current_logs
             
-            widget_hash = hashlib.md5(f"{description}{df.shape}".encode()).hexdigest()[:8]
-            widget_dir = Path(__file__).parent / "widgets"
-            widget_dir.mkdir(exist_ok=True)
-            widget_file = widget_dir / f"widget_{widget_hash}.js"
+            # Save to widget store
+            notebook_path = store.get_notebook_path()
+            widget_entry = store.save(
+                widget_code=widget_code,
+                description=description,
+                data_var_name=data_var_name,
+                model=model,
+                exports=self._exports,
+                imports_serialized=imports_serialized,
+                notebook_path=notebook_path,
+            )
             
-            widget_file.write_text(widget_code)
-            
-            self.logs = self.logs + [f"Widget saved: widget_{widget_hash}.js"]
+            self.logs = self.logs + [f"Widget saved: {widget_entry['slug']} v{widget_entry['version']}"]
+            self.logs = self.logs + [f"Location: .vibewidget/widgets/{widget_entry['file_name']}"]
             self.code = widget_code
             self.status = "ready"
-            self.description = enhanced_description
-            self.data_profile_md = data_profile.to_markdown() if data_profile else ""
+            self.description = description
+            self._widget_metadata = widget_entry
+            
+            # Store data_info for error recovery
+            self.data_info = self._extract_data_info(df)
+            self.data_info["exports"] = self._exports
+            self.data_info["imports"] = imports_serialized
             
         except Exception as e:
             self.status = "error"
@@ -280,7 +300,7 @@ class VibeWidget(anywidget.AnyWidget):
             raise
     
     def _on_error(self, change):
-        """Called when frontend reports a runtime error"""
+        """Called when frontend reports a runtime error."""
         error_msg = change['new']
         
         if not error_msg or self.retry_count >= 2:
@@ -294,10 +314,12 @@ class VibeWidget(anywidget.AnyWidget):
         self.logs = self.logs + ["Asking LLM to fix the error..."]
         
         try:
-            fixed_code = self.llm_provider.fix_code_error(
-                self.code,
-                error_msg,
-                self.data_info
+            clean_data_info = _clean_for_json(self.data_info)
+            
+            fixed_code = self.orchestrator.fix_runtime_error(
+                code=self.code,
+                error_message=error_msg,
+                data_info=clean_data_info,
             )
             
             self.logs = self.logs + ["Code fixed, retrying..."]
@@ -309,143 +331,33 @@ class VibeWidget(anywidget.AnyWidget):
             self.logs = self.logs + [f"Fix attempt failed: {str(e)}"]
             self.error_message = ""
     
-    def _profile_to_info(self, profile) -> dict[str, Any]:
-        """Convert DataProfile to info dict for LLM"""
-        return {
-            "columns": [col.name for col in profile.columns],
-            "dtypes": {col.name: col.dtype for col in profile.columns},
-            "shape": profile.shape,
-            "sample": profile.sample_records,
-            
-            # Rich metadata from preprocessor
-            "domain": profile.inferred_domain,
-            "purpose": profile.dataset_purpose,
-            "is_timeseries": profile.is_timeseries,
-            "temporal_column": profile.temporal_column,
-            "temporal_frequency": profile.temporal_frequency,
-            "is_geospatial": profile.is_geospatial,
-            "coordinate_columns": profile.coordinate_columns,
-            
-            # Column insights
-            "column_meanings": {
-                col.name: {
-                    "meaning": col.inferred_meaning,
-                    "uses": col.potential_uses,
-                    "dtype_info": {
-                        "min": col.min,
-                        "max": col.max,
-                        "cardinality": col.cardinality,
-                    }
-                }
-                for col in profile.columns
-            },
-            
-            # Visualization guidance
-            "suggested_visualizations": profile.suggested_visualizations,
-            "key_insights": profile.key_insights,
-        }
-    
-    def _enhance_description(self, user_description: str, profile) -> str:
-        """Enhance user description with profile insights"""
-        enhancements = []
-        
-        # Add domain context
-        if profile.inferred_domain:
-            enhancements.append(f"Domain: {profile.inferred_domain}")
-        
-        # Add data characteristics
-        characteristics = []
-        if profile.is_timeseries:
-            characteristics.append(f"time series ({profile.temporal_frequency})")
-        if profile.is_geospatial:
-            characteristics.append("geospatial")
-        
-        if characteristics:
-            enhancements.append(f"Data type: {', '.join(characteristics)}")
-        
-        # Add key insights
-        if profile.key_insights:
-            insights_text = "\n".join(f"- {insight}" for insight in profile.key_insights[:3])
-            enhancements.append(f"Key patterns:\n{insights_text}")
-        
-        # Add suggested visualizations if user description is vague
-        if len(user_description.split()) < 10 and profile.suggested_visualizations:
-            viz_text = "\n".join(f"- {viz}" for viz in profile.suggested_visualizations[:2])
-            enhancements.append(f"Suggested approaches:\n{viz_text}")
-        
-        # Combine
-        if enhancements:
-            context_block = "\n\n".join(enhancements)
-            return f"{user_description}\n\nContext:\n{context_block}"
-        else:
-            return user_description
-    
     def _extract_data_info(self, df: pd.DataFrame) -> dict[str, Any]:
-        """Fallback: basic data extraction without preprocessor"""
+        """Extract basic data info for LLM context."""
         return {
             "columns": df.columns.tolist(),
             "dtypes": {col: str(dtype) for col, dtype in df.dtypes.items()},
             "shape": df.shape,
             "sample": df.head(3).to_dict(orient="records"),
         }
-    
-    def _merge_profiles(self, provided_profile: DataProfile, extracted_profile: DataProfile) -> DataProfile:
-        """Merge a provided profile with an extracted profile, preserving provided metadata"""
-        # Use provided profile as base
-        merged = provided_profile
-        
-        # Update with extracted profile's structural info (shape, columns) if different
-        if extracted_profile.shape != provided_profile.shape:
-            # If shapes differ, use extracted (more accurate for current data)
-            merged.shape = extracted_profile.shape
-        
-        # Merge column information - use provided if available, otherwise extracted
-        # Match columns by name (case-insensitive)
-        extracted_cols_by_name = {col.name.lower(): col for col in extracted_profile.columns}
-        provided_cols_by_name = {col.name.lower(): col for col in provided_profile.columns}
-        
-        merged_columns = []
-        for extracted_col in extracted_profile.columns:
-            col_key = extracted_col.name.lower()
-            if col_key in provided_cols_by_name:
-                # Use provided column but update with extracted stats
-                provided_col = provided_cols_by_name[col_key]
-                # Update statistical properties from extracted if missing in provided
-                if provided_col.count is None and extracted_col.count is not None:
-                    provided_col.count = extracted_col.count
-                if provided_col.min is None and extracted_col.min is not None:
-                    provided_col.min = extracted_col.min
-                if provided_col.max is None and extracted_col.max is not None:
-                    provided_col.max = extracted_col.max
-                merged_columns.append(provided_col)
-            else:
-                # New column from extracted
-                merged_columns.append(extracted_col)
-        
-        merged.columns = merged_columns
-        
-        # Infer missing domain/description/purpose if not in provided profile
-        if not merged.inferred_domain and extracted_profile.inferred_domain:
-            merged.inferred_domain = extracted_profile.inferred_domain
-        
-        if not merged.dataset_purpose and extracted_profile.dataset_purpose:
-            merged.dataset_purpose = extracted_profile.dataset_purpose
-        
-        # Merge key insights
-        if extracted_profile.key_insights:
-            merged.key_insights.extend(extracted_profile.key_insights)
-        
-        # Update sample records from extracted if not in provided
-        if not merged.sample_records and extracted_profile.sample_records:
-            merged.sample_records = extracted_profile.sample_records
-        
-        return merged
+
+    def get_pipeline_artifacts(self) -> dict[str, Any]:
+        """Get pipeline artifacts from agentic generation."""
+        return self._pipeline_artifacts
+
+    def get_data_wrangle_code(self) -> str | None:
+        """Get the Python data wrangling code generated (if any)."""
+        return self._pipeline_artifacts.get("wrangle_code")
+
+    def get_implementation_plan(self) -> dict[str, Any] | None:
+        """Get the implementation plan from agentic generation."""
+        return self._pipeline_artifacts.get("plan")
 
 
 def create(
     description: str,
     df: pd.DataFrame | str | Path | None = None,
-    config: Config | None = None,
+    api_key: str | None = None,
+    model: str = "claude-haiku-4-5-20251001",
     context: dict | DataProfile | None = None,
     use_preprocessor: bool = True,
     show_progress: bool = True,
@@ -453,44 +365,26 @@ def create(
     imports: dict[str, Any] | None = None,
 ) -> VibeWidget:
     """
-    Create a VibeWidget visualization with intelligent preprocessing.
+    Create a VibeWidget visualization with automatic data processing.
     
     Args:
         description: Natural language description of the visualization
         df: DataFrame to visualize OR path to data file (CSV, NetCDF, GeoJSON, etc.) OR None when using imports only
-        config: Configuration object with model settings (uses global config if not provided)
+        api_key: Anthropic API key (or set ANTHROPIC_API_KEY env var)
+        model: Claude model to use
         context: Additional context (dict with domain/purpose/etc.) OR DataProfile object
         use_preprocessor: Whether to use intelligent preprocessing (recommended)
         exports: Dict of {trait_name: description} for traits this widget exposes
-        imports: Dict of {trait_name: source} where source is another widget's trait or literal value
+        imports: Dict of {trait_name: source} where source is another widget's trait
     
     Returns:
         VibeWidget instance
     
     Examples:
-        >>> # Simple DataFrame
         >>> widget = create("show temperature trends", df)
-        
-        >>> # With context dict for better results
-        >>> widget = create(
-        ...     "create an interactive dashboard",
-        ...     df,
-        ...     context={
-        ...         "domain": "epidemiology",
-        ...         "purpose": "track disease outbreaks"
-        ...     }
-        ... )
-        
-        >>> # With pre-computed profile
-        >>> profile = preprocess_data(df, api_key=api_key)
-        >>> widget = create("visualize patterns", df, context=profile)
-        
-        >>> # From file (auto-detects format)
-        >>> widget = create(
-        ...     "visualize ice velocity patterns",
-        ...     "ice_data.nc",
-        ...     context={"domain": "glaciology"}
-        ... )
+        >>> widget = create("visualize sales data", "sales.csv")
+        >>> widget = create("extract and visualize tables", "report.pdf")
+        >>> widget = create("visualize top stories", "https://news.ycombinator.com")
     """
     # Handle file paths
     if isinstance(df, (str, Path)):
@@ -500,7 +394,7 @@ def create(
         if isinstance(context, DataProfile):
             profile = context
         else:
-            profile = preprocess_data(df, api_key=config.api_key, context=context)
+            profile = preprocess_data(df, api_key=api_key, context=context)
         
         # For now, we need to convert to DataFrame for the widget
         # This is a limitation we might want to address
@@ -739,37 +633,33 @@ def create(
     widget = VibeWidget._create_with_dynamic_traits(
         description=description,
         df=df,
-        config=config,
+        api_key=api_key,
+        model=model,
         use_preprocessor=use_preprocessor,
         context=context,
         show_progress=show_progress,
         exports=exports,
         imports=imports,
+        data_var_name=data_var_name,
     )
 
-    # Link imported traits so they stay synchronized automatically
+    # Link imported traits
     if imports:
         for import_name, import_source in imports.items():
             if hasattr(import_source, "trait_names") and hasattr(import_source, import_name):
                 try:
                     traitlets.link((import_source, import_name), (widget, import_name))
-                    print(
-                        f"✓ Linked {import_name}: {import_source.__class__.__name__} -> {widget.__class__.__name__}"
-                    )
-                except Exception as exc:  # pragma: no cover - debug aid
-                    print(f"✗ Failed to link {import_name}: {exc}")
+                except Exception as exc:
+                    print(f"Failed to link {import_name}: {exc}")
             elif hasattr(import_source, "__self__"):
                 source_widget = import_source.__self__
                 if hasattr(source_widget, import_name):
                     try:
                         traitlets.link((source_widget, import_name), (widget, import_name))
-                        print(
-                            f"✓ Linked {import_name}: {source_widget.__class__.__name__} -> {widget.__class__.__name__}"
-                        )
-                    except Exception as exc:  # pragma: no cover - debug aid
-                        print(f"✗ Failed to link {import_name}: {exc}")
+                    except Exception as exc:
+                        print(f"Failed to link {import_name}: {exc}")
     
-    # Explicitly display the widget to ensure it renders
+    # Display widget
     try:
         from IPython.display import display
         display(widget)
@@ -777,44 +667,3 @@ def create(
         pass
     
     return widget
-
-
-# Additional API methods for working with profiles
-def analyze_data(
-    source: Any,
-    api_key: str | None = None,
-    context: dict | None = None,
-    save_to: str | Path | None = None
-):
-    """
-    Analyze data without creating a widget (just get the profile)
-    
-    Returns:
-        DataProfile with insights
-    """
-    from vibe_widget.data_parser.preprocessor import preprocess_data
-    
-    profile = preprocess_data(
-        source,
-        api_key=api_key,
-        context=context,
-        save_to=save_to
-    )
-    
-    # print(profile.to_markdown())
-    return profile
-
-
-def suggest_visualizations(
-    source: Any,
-    api_key: str | None = None,
-    context: dict | None = None
-) -> list[str]:
-    """
-    Get visualization suggestions for a dataset without creating a widget
-    
-    Returns:
-        List of visualization suggestions
-    """
-    profile = analyze_data(source, api_key=api_key, context=context)
-    return profile.suggested_visualizations
