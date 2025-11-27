@@ -1,108 +1,144 @@
-# Vibe Widget ✨
+# Vibe Widget
 
 ![Python Version](https://img.shields.io/badge/python-3.9%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Multi-Provider](https://img.shields.io/badge/LLM-Multi%20Provider-blueviolet)
-![Jupyter](https://img.shields.io/badge/jupyter-widgets-orange)
+![PyPI - Version](https://img.shields.io/pypi/v/vibe-widget)
+![PyPI - Downloads](https://img.shields.io/pypi/dm/vibe-widget)
 
-**Transform natural language into beautiful, interactive visualizations — powered by AI (Claude, GPT, Gemini).**
 
-Vibe Widget is an agentic visualization library that generates custom interactive widgets from plain English descriptions. Just describe what you want to visualize, provide your data, and let the AI create a tailored React component that brings your data to life.
 
-## What Makes Vibe Widget Special?
-
-### 🤖 **AI-Powered Widget Generation**
-No more fighting with plotting APIs or wrestling with configuration options. Simply describe your visualization in natural language, and AI (Claude, GPT, or Gemini) generates production-ready React code customized to your exact needs.
-
-### 🔗 **Cross-Widget Interactions**
-Create **linked visualizations** where interactions in one widget dynamically update others. Brush-select points in a scatter plot to filter a histogram. Click a planet in 3D space to highlight it in a chart. Paint terrain on a canvas and watch it render in 3D — all with automatic state synchronization.
-
-### 📂 **Universal Data Support**
-Load data from anywhere:
-- **DataFrames**: Pandas DataFrames
-- **Files**: CSV, JSON, NetCDF, XML, ISF (seismic data)
-- **Documents**: PDF tables extracted automatically
-- **Web**: Scrape and visualize data from any URL
-- **Live**: Real-time data streams
-
-### 🎨 **Truly Custom Visualizations**
-Unlike traditional plotting libraries with fixed chart types, Vibe Widget generates **completely custom** React components. Want a 3D solar system? A terrain painter? An interactive game board? Just describe it.
-
-### 💾 **Smart Caching**
-Generated widgets are automatically cached with intelligent versioning. Recreating the same visualization is instant, and you can track all your widget variations.
+## What is Vibe Widget?
+```python
+                                                                                               
+                                                                                               
+                                ...::-==+**######*++=-::...                                    
+                            ..:-+*###*###################*+=:..                                
+                         ..-******#########*****###############=..                             
+                      ..-*********                       #########=:.                          
+                   ..-+******#                               #######*-..                       
+                 ..-****                                           ####=.                      
+                .:*#**  ##**                                 ####    %###-.                    
+               .+***   ##****#                             #######     ###*:.                  
+             .-***    ##*****###                         ##########      ##%+.                 
+            .=*#*     ##*#########                     ############%      %%%*:.               
+           .+**#     ###############                 *##############       %%#*:.              
+         ..+***     ################################################%       %#%#:.             
+         .+#**      ###############################################%%        %%%#:.            
+        .-*##      ##########################################%##%%%%%%        %%%+.            
+       .:*#*       ########################################%%%%%%%%%%%         %%#-.           
+       .=#*    #### ######################################%%%%%%%%%%%# %%%%%    %%*.           
+    ..:=**##*##########################################%%%%%%%%%%%%%%# %%%%%%%%%%%%+-.         
+  ..=******##*########################################%%%%%%%%%%%%%%%% %%%%%%%%%%%%%%%=.       
+ .:**##****###=:+#################################%%%%%%%%%%%%%%%%%%%% %%%%% %%%%%%%%%%%:.     
+.:+*:*######*==+*###############################%#%%%%%%%%%%%%%%%%%%%% %%%%%%%%%   %% %%#-.    
+.=**:*#*--*+-*=:################*--*###########%%%%%%%#=-*%%%%%%%%%%%% %%%% %%%%%%%%%%%%%*.    
+.+#*:+-=*****+:.*##############=....-########%%%%%%%%#....-#%%%%%%%%%% %%%%% %%%  %%%%%%%#:    
+.+#*:*++=.+-.+++*##############=....=######%%%%%%%%%%#....-#%%%%%%%%%% %%%%%%%%%%%%%%%%%%#:.   
+.=#*:=.==.+-+=+**-*##############++*##%%%%*...-#%%%%%%#*+*%%%%%%%%%%%% %%%%%%%%%%%% %%#%%*.    
+ :**:++++++++=###+=######################%#-..=%%#%%%%%%%%%%%%%%%%%%%% %%%%% #%%%%%%  #%#-.    
+ .:*#########=-=-:+####################--#%+.:#%+.*%%%%%%%%%%%%%%%%%%% %%%%%#%%%%%%%%%%%-.     
+   .=#########*###=.+################%%#+..-**..=#%%%%%%%%%%%%%%%%%%%% %%%%%%%%%%%%%%%+.       
+     .-*############%############%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% %%%%% %%%%%##=..        
+       ..-##   #### ###########%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% %%%%%   #%+..           
+        .:*## %   ##########%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%   %% %%%-.            
+         .-###%###########%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% %%*.             
+          .+## ##########%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% %%#.              
+          ..+## %######%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% %%#:.              
+            .+## %%#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% %%#-.               
+             .+### %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#:.                
+              .-### %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% #%%*..                 
+                :*%%% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%  %%#-.                   
+                 .-#%%% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% #%%+.                     
+                   .-#%%% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% #%%%+:                       
+                     .:#%%%   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%  %%%%=..                        
+                       .:=#%%%%  %%%%%%%%%%%%%%%%%%%%%%%%%  %%%%%*-..                          
+                          ..-*%%%%%%   %%%%%%%%%%%%%   %%%%%%%=:..                             
+                              ..:*#%%%%%%%%%%%%%%%%%%%%%%#=...                                 
+                                  ....:=+++******++=-:....                                     
+                                         ..  .                                                 
+           %%%                                    %%                                           
+           %%%%%%%%                              %%%%      %%%%                     %%%        
+  %%    %%  %% %%%%%%%      %%%    %%    %    %%  %%    %%%%%%%   %%%  %%    %%%   %%%%%%      
+ %%%%  %%%%%%% %%%%%%%%%  %%%%%%%%%%%% %%%%  %%%%%%%% %%%%%%%%% %%%%%%%%%  %%%%%%%%%%%%%%%     
+  %%%%%%%% %%% %%%%  %%%%%%%%%%%%% %%% %%%%% %%% %%%% %%%  %%%% %%%   %%% %%%%%%%%% %%%%       
+   %%%%%%  %%% %%%%  %%%%%%%%%%%%% %%%%%%%%%%%%  %%%% %%%  %%%% %%%% %%%% %%%%%%%%% %%%%       
+    %%%%   %%% %%%%%%%%%  %%%%%%%%  %%%%% %%%%   %%%% %%%%%%%%%  %%%%%%%%  %%%%%%%% %%%%%%%    
+     %%     %   %% %%%      %%%%      %%   %%     %%    %%% %%   %%  %%%%    %%%%     %%%%     
+                                                                %%%%%%%%                       
+                                                                                               
+                                                                                               
+```
+yep
 
 ---
 
-## 🚀 Installation
+## Why Vibe Widget?
+
+**→ Speak Human, Get Code**
+Describe your viz in plain English. The AI writes production-ready React. You get interactive widgets. Everyone's happy.
+
+**→ Widgets That Talk to Each Other**  
+Select points in one chart → instantly updates another. Paint terrain → watch it render in 3D. It's like your visualizations are texting each other.
+
+**→ Eat Any Data Format**  
+Pandas DataFrames? Obviously. But also: CSV, JSON, NetCDF, XML, PDF tables, seismic data (ISF), scraped web pages, live streams. If it's data, we'll visualize it.
+
+**→ Actually Custom Stuff**  
+Not limited to "bar chart but blue this time." Want a 3D solar system? An interactive game board? A terrain painter? Just ask. The AI builds it from scratch.
+
+**→ Smart Caching**  
+Same description + data = instant load from cache. Different description = new widget, stored separately. It's like git for visualizations.
+
+---
+
+## Installation
 
 ```bash
 pip install vibe-widget
 ```
 
 Or with `uv`:
-
 ```bash
 uv pip install vibe-widget
 ```
 
-Set your API key(s) for the provider(s) you want to use:
-
+Set your API key (pick your AI flavor):
 ```bash
-# For Claude models (Anthropic)
-export ANTHROPIC_API_KEY='your-api-key-here'
-
-# For GPT models (OpenAI) 
-export OPENAI_API_KEY='your-api-key-here'
-
-# For Gemini models (Google)
-export GEMINI_API_KEY='your-api-key-here'
+export ANTHROPIC_API_KEY='your-key'    # for Claude
+export OPENAI_API_KEY='your-key'       # for GPT
+export GEMINI_API_KEY='your-key'       # for Gemini
 ```
 
 ---
 
-## ⚡ Quick Start
+## Quickstart (Seriously, It's This Easy)
 
 ```python
 import pandas as pd
 import vibe_widget as vw
 
-# Optional: Configure your preferred model (defaults to Claude)
-vw.config(model="gemini")  # Use Google Gemini
-# or
-vw.config(model="openai", mode="premium")  # Use GPT-5 or o3-pro
-# or 
-vw.config(model="anthropic", mode="standard")  # Use Claude Sonnet
+# Pick your AI (optional, defaults to Claude)
+vw.config(model="gemini")  # or "openai" or "anthropic"
 
-# See all available models
-print(vw.models())
-
-# Load your data
+# Got data?
 df = pd.read_csv('sales_data.csv')
 
-# Create a visualization with natural language
+# Describe what you want
 widget = vw.create(
-    "interactive bar chart showing sales by region, sorted by revenue, with hover tooltips",
+    "bar chart of sales by region, sorted high to low, with tooltips",
     df
 )
 ```
 
-That's it! The AI will:
-1. ✅ Analyze your data structure
-2. ✅ Generate a custom React component
-3. ✅ Validate and test the code
-4. ✅ Display the interactive widget in your notebook
+The AI will analyze your data, write React code, validate it, fix any bugs, and render it. You just chill.
 
 ---
 
-## 📚 Usage Examples
+## Real Examples
 
-### 📊 **Basic Visualization**
-
+**Basic Viz**
 ```python
-import vibe_widget as vw
-import pandas as pd
-
-# Create a simple chart
 df = pd.DataFrame({
     'planet': ['Mercury', 'Venus', 'Earth', 'Mars'],
     'distance': [0.39, 0.72, 1.0, 1.52],
@@ -110,287 +146,176 @@ df = pd.DataFrame({
 })
 
 widget = vw.create(
-    "3D scatter plot showing planet distance from sun vs orbital period, with size based on mass",
+    "3D scatter plot: distance vs mass, size by mass, make it spinny",
     df
 )
 ```
 
-### 🌐 **Web Scraping**
-
+**Scrape the Web**
 ```python
-# Automatically scrape and visualize web data
 widget = vw.create(
-    "Show Hacker News stories as interactive cards with sorting by score and filtering",
+    "show Hacker News stories as cards, let me sort by score",
     "https://news.ycombinator.com"
 )
 ```
 
-### 📄 **PDF Extraction**
-
+**Extract PDF Tables**
 ```python
-# Extract and visualize tables from PDFs
 widget = vw.create(
-    "interactive table from the PDF with sorting and filtering capabilities",
+    "interactive table from this PDF with sorting",
     "report.pdf"
 )
 ```
 
-### 🌍 **Scientific Data (NetCDF)**
-
+**Climate Data (NetCDF)**
 ```python
-# Visualize climate/ocean data
 widget = vw.create(
-    "interactive heatmap showing sea surface temperature patterns, zoomable and pannable",
-    "sea_surface_temp.nc"
+    "heatmap of sea surface temps, zoomable",
+    "ocean_data.nc"
 )
 ```
 
-### 🔗 **Cross-Widget Interactions**
-
-Create **linked visualizations** that communicate with each other:
-
+**Linked Widgets (The Cool Part)**
 ```python
-# Widget 1: Scatter plot with brush selection
+# Widget 1: Scatter with selection
 scatter = vw.create(
-    "scatter plot of temperature vs humidity with brush selection",
+    "scatter plot with brush selection",
     df,
-    exports={"selected_indices": "indices of selected points"}
+    exports={"selected": "indices of selected points"}
 )
 
-# Widget 2: Histogram that responds to selection
+# Widget 2: Histogram that reacts
 histogram = vw.create(
-    "histogram of temperature, highlighting selected points from scatter plot",
+    "histogram highlighting selected points from scatter",
     df,
-    imports={"selected_indices": scatter}
+    imports={"selected": scatter}
 )
 
-# Now selecting points in the scatter plot automatically updates the histogram! 🎉
+# Select in scatter → histogram updates instantly ✨
 ```
 
-**More Cross-Widget Examples:**
-
-- 🎮 **Interactive Terrain Editor**: Paint terrain on a 2D canvas → Watch it render in 3D
-- 🪐 **Solar System Explorer**: Click planets in 3D → Highlight data in charts
-- 🎯 **Data Filtering**: Brush points in one chart → Filter multiple other visualizations
-- 🎲 **Game States**: Game board → AI decision tree visualization
-
-See [`examples/cross_widget_interactions.ipynb`](examples/cross_widget_interactions.ipynb) for complete examples!
+More examples: terrain editors, solar system explorers, game state visualizers → check [`examples/cross_widget_interactions.ipynb`](examples/cross_widget_interactions.ipynb)
 
 ---
 
-## 🎯 Key Features
+## The Important Bits
 
-### 🧠 **Intelligent Data Processing**
-- Automatic data type detection and conversion
-- Smart sampling for large datasets (>100k rows)
-- Multi-format support (CSV, JSON, NetCDF, XML, ISF, PDF)
-- Web scraping with automatic content extraction
+**Data Handling**  
+→ Auto-detects formats and types  
+→ Samples huge datasets (>100k rows) smartly  
+→ Supports CSV, JSON, NetCDF, XML, ISF, PDF, web scraping  
 
-### 🛠️ **Agentic Code Generation**
-- LLM-powered React component generation
-- Automatic validation and error repair
-- Self-healing code with diagnostic feedback
-- Iterative refinement until production-ready
+**Code Generation**  
+→ LLM writes React components  
+→ Validates and auto-fixes errors  
+→ Iterates until it works  
 
-### 🔄 **State Management**
-- Automatic trait linking between widgets
-- Bidirectional data synchronization
-- Export/import system for cross-widget communication
-- Built on Jupyter widgets (ipywidgets) for robust state handling
+**Widget Communication**  
+→ Export/import system for state sharing  
+→ Automatic sync between widgets  
+→ Built on Jupyter widgets (ipywidgets)  
 
-### 💾 **Smart Caching System**
-- Automatic widget versioning
-- Content-based cache keys
-- Instant recreation of previously generated widgets
-- Organized storage in `.vibewidget/` directory
-
-### 📦 **Production Ready**
-- Full TypeScript/JSX support in generated components
-- Modern React patterns (hooks, effects)
-- Clean, maintainable generated code
-- Comprehensive error handling
+**Caching**  
+→ Same input = instant cache hit  
+→ Organized in `.vibewidget/` folder  
+→ Track all your widget versions  
 
 ---
 
-## 🎨 API Reference
-
-### `vw.create()`
-
-The main function for creating visualizations:
+## API (The Only Function You Need)
 
 ```python
 widget = vw.create(
-    description: str,              # Natural language description
-    data: DataFrame | str | Path,  # Data source
-    api_key: str | None = None,    # API key for selected provider (or use env vars)
-    model: str | None = None,      # Model to use (see vw.models() for options)
-    show_progress: bool = True,    # Show generation progress
-    exports: dict | None = None,   # Traits to export for other widgets
-    imports: dict | None = None,   # Traits to import from other widgets
-    config: Config | None = None,  # Optional Config object with model settings
+    description="natural language description of your viz",
+    data=df,                        # DataFrame, file path, or URL
+    model="anthropic",              # "anthropic", "openai", or "gemini"
+    exports={"trait": "description"},   # what this widget shares
+    imports={"trait": other_widget},    # what this widget receives
 )
 ```
 
-**Parameters:**
+**Description Tips**  
+Be specific: "3D scatter with rotation" beats "show the data"  
+Mention interactions: "with hover tooltips", "clickable legend"  
+Style it: "dark theme", "sorted by value", "highlight outliers"  
 
-- **`description`**: Natural language description of your visualization
-  - Be specific about chart types, interactions, styling, etc.
-  - Examples: "3D scatter plot with rotation controls", "bar chart with hover tooltips sorted by value"
+**Data Sources**  
+→ Pandas DataFrame (the classic)  
+→ File paths: `.csv`, `.json`, `.nc`, `.xml`, `.isf`, `.pdf`  
+→ URLs (we'll scrape it)  
+→ `None` (for widgets driven purely by imports)  
 
-- **`data`**: Your data source, can be:
-  - Pandas DataFrame
-  - File path (CSV, JSON, NetCDF, XML, ISF, PDF)
-  - URL (for web scraping)
-  - `None` (for widgets driven purely by imports)
-
-- **`model`**: LLM model to use (optional)
-  - Shortcuts: `"anthropic"`, `"openai"`, `"gemini"`
-  - Specific models: `"claude-3-5-sonnet"`, `"gpt-4-turbo"`, `"gemini-1.5-pro"`
-  - Use `vw.models()` to see all available options
-  
-- **`config`**: Config object for model settings
-  - Can be created with `vw.Config(model="gemini", mode="premium")`
-  - Overrides the `model` and `api_key` parameters if provided
-
-- **`exports`**: Dictionary of traits this widget exposes
-  - Keys: trait names
-  - Values: descriptions of what the trait contains
-  - Example: `{"selected_indices": "list of selected point indices"}`
-
-- **`imports`**: Dictionary of traits this widget imports
-  - Keys: trait names
-  - Values: source widget or trait reference
-  - Example: `{"selected_indices": scatter_widget}`
-
-**Returns:** `VibeWidget` instance (Jupyter widget) that displays immediately
-
----
-
-### Model Configuration
-
-Vibe Widget supports multiple AI providers. You can configure models in several ways:
-
+**Model Selection**  
 ```python
-import vibe_widget as vw
+vw.config(model="gemini", mode="standard")   # fast & cheap
+vw.config(model="openai", mode="premium")    # powerful & pricey
 
-# Method 1: Global configuration
-vw.config(model="gemini", mode="standard")  # Use Gemini Flash (fast/cheap)
-vw.config(model="openai", mode="premium")   # Use GPT-5 (powerful/expensive)
+# or per-widget
+widget = vw.create("...", df, model="claude-3-5-sonnet")
 
-# Method 2: Per-widget configuration
-config = vw.Config(model="anthropic", mode="premium")
-widget = vw.create("your visualization", df, config=config)
-
-# Method 3: Direct model specification
-widget = vw.create("your visualization", df, model="claude-3-5-sonnet")
-
-# See available models
-all_models = vw.models()                    # All providers and models
-gemini_models = vw.models("gemini")         # Just Gemini models
-premium_models = vw.models(mode="premium")  # All premium tier models
+# see all options
+print(vw.models())
 ```
-
-**Modes:**
-- `"standard"`: Fast, cost-effective models (default)
-- `"premium"`: Most capable, higher-cost models
 
 ---
 
-## 🧪 Examples & Tutorials
+## Examples & Notebooks
 
-Check out these notebooks to see Vibe Widget in action:
-
-1. **[`examples/pdf_and_web_extraction.ipynb`](examples/pdf_and_web_extraction.ipynb)**
-   - Extract and visualize PDF tables
-   - Scrape and display web content
-   - Multi-format data handling
-
-2. **[`examples/cross_widget_interactions.ipynb`](examples/cross_widget_interactions.ipynb)**
-   - Linked scatter plot and histogram
-   - 3D terrain painter with live rendering
-   - Interactive solar system with data highlighting
-   - AI game with decision tree visualization
-
-3. **[`tests/test_agentic_demo.ipynb`](tests/test_agentic_demo.ipynb)**
-   - Comprehensive test suite
-   - All data formats
-   - Edge cases and error handling
+→ [`examples/pdf_and_web_extraction.ipynb`](examples/pdf_and_web_extraction.ipynb) - PDFs and web scraping  
+→ [`examples/cross_widget_interactions.ipynb`](examples/cross_widget_interactions.ipynb) - Linked visualizations  
+→ [`tests/test_agentic_demo.ipynb`](tests/test_agentic_demo.ipynb) - Full test suite  
 
 ---
 
-## 🏗️ Architecture
+## How It Works
 
 ```
-User Input (natural language + data)
-          ↓
-    DataProcessor (detects format, extracts data)
-          ↓
-    AgenticOrchestrator (LLM-based code generation)
-          ↓
-    Tools: CodeValidator, RuntimeTester, ErrorDiagnose
-          ↓
-    WidgetStore (caching & versioning)
-          ↓
-    VibeWidget (rendered in Jupyter)
+You type English
+    ↓
+DataProcessor figures out your data
+    ↓
+AI writes React code
+    ↓
+Tools validate & fix bugs
+    ↓
+WidgetStore caches it
+    ↓
+You get a working visualization
 ```
-
-**Key Components:**
-
-- **`DataProcessor`**: Universal data loader supporting 10+ formats
-- **`AgenticOrchestrator`**: Claude-powered code generation with validation
-- **`WidgetStore`**: Intelligent caching with version control
-- **`VibeWidget`**: Jupyter widget wrapper with state management
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
-We welcome contributions! Here's how to get started:
+Want to make this better? Hell yeah.
 
 ```bash
-# Clone the repo
 git clone https://github.com/yourusername/vibe-widget.git
 cd vibe-widget
-
-# Install with dev dependencies
 pip install -e ".[dev]"
-
-# Run tests
 pytest
-
-# Lint and format
-ruff check .
-ruff format .
 ```
 
 ---
 
-## 📄 License
+## License
 
-MIT License - see [LICENSE](LICENSE) file for details
-
----
-
-## 🙏 Acknowledgments
-
-- Powered by [Claude](https://www.anthropic.com/claude) (Anthropic)
-- Built on [anywidget](https://github.com/manzt/anywidget) and [ipywidgets](https://ipywidgets.readthedocs.io/)
-- Inspired by the vision of natural language programming
+MIT - do whatever you want with it
 
 ---
 
-## 🔗 Links
+## Props To
 
-- **Documentation**: [GitHub README](https://github.com/yourusername/vibe-widget#readme)
-- **Issues**: [GitHub Issues](https://github.com/yourusername/vibe-widget/issues)
-- **Examples**: [Jupyter Notebooks](examples/)
+→ Claude, GPT, and Gemini for the AI magic  
+→ anywidget & ipywidgets for the Jupyter integration  
+→ Traitlets for state management  
+→ Crawl4AI for web scraping  
+→ Camelot for PDF extraction  
 
 ---
 
-<div align="center">
+**[⭐ Star on GitHub](https://github.com/yourusername/vibe-widget) | [📖 Docs](https://www.dylanwootton.com/vibe-widgets/index.html) | [🐛 Report Bug](https://github.com/yourusername/vibe-widget/issues)**
 
-**Made with ❤️ and Claude AI**
+---
 
-[⭐ Star on GitHub](https://github.com/yourusername/vibe-widget) | [📖 Documentation](https://www.dylanwootton.com/vibe-widgets/index.html) | [🐛 Report Bug](https://github.com/yourusername/vibe-widget/issues)
-
-</div>
+*Made with ✨vibes✨ and probably too much coffee*
