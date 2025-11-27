@@ -37,6 +37,7 @@ ENV/
 
 # Testing
 .pytest_cache/
+pytest.ini
 .coverage
 htmlcov/
 .tox/
@@ -64,6 +65,10 @@ output/
 # Vibe widget cache
 .vibe_cache/
 
+# Node modules
+node_modules/
+**/node_modules/
+
 
 
 /venv311/
@@ -71,3 +76,8 @@ output/
 /testdata/
 
 /tests/
+
+/planningtester.ipynb
+
+/planning/
+.vibewidget/
