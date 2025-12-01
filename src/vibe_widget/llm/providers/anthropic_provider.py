@@ -56,7 +56,7 @@ class AnthropicProvider(LLMProvider):
                     max_tokens=8192,
                     temperature=0.7,
                 )
-                return self._clean_code(response.content[0].text)
+                return self.clean_code(response.content[0].text)
                 
         except Exception as e:
             # Check for context length issues
@@ -90,7 +90,7 @@ class AnthropicProvider(LLMProvider):
                 max_tokens=8192,
                 temperature=0.7,
             )
-            return self._clean_code(response.content[0].text)
+            return self.clean_code(response.content[0].text)
     
     def fix_code_error(
         self,
@@ -109,7 +109,7 @@ class AnthropicProvider(LLMProvider):
             temperature=0.3,
         )
         
-        return self._clean_code(response.content[0].text)
+        return self.clean_code(response.content[0].text)
     
     def _handle_stream(self, stream, progress_callback: Callable[[str], None]) -> str:
         """Handle streaming response."""
@@ -118,7 +118,7 @@ class AnthropicProvider(LLMProvider):
             code_chunks.append(text)
             progress_callback(text)
         
-        return self._clean_code("".join(code_chunks))
+        return self.clean_code("".join(code_chunks))
     
     def _retry_with_shorter_prompt(
         self,
@@ -152,7 +152,7 @@ class AnthropicProvider(LLMProvider):
                 max_tokens=8192,
                 temperature=0.7,
             )
-            return self._clean_code(response.content[0].text)
+            return self.clean_code(response.content[0].text)
     
     # Methods _build_prompt, _build_revision_prompt, _build_fix_prompt,
-    # _build_exports_imports_section, and _clean_code are inherited from base class
+    # _build_exports_imports_section, and clean_code are inherited from base class

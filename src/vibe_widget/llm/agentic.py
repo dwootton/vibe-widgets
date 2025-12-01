@@ -3,26 +3,16 @@ Agentic Orchestrator for widget generation.
 
 Design philosophy:
 - Accept DataFrame directly (data processing done upstream)
-- Use LLM only for: code generation, validation, error repair
-- Agent decides when to use data tools, gen tools, etc.
+- Use LLM providers for: code generation, validation, error repair
 - Always validate after generation, regenerate if needed
 - Keep prompts concise - agent responds with tool calls only
 """
 
-import json
-import re
 from typing import Any, Callable, Tuple
 
-from anthropic import Anthropic
 import pandas as pd
 
-from vibe_widget.llm.tools import (
-    ToolRegistry,
-    ToolResult,
-    CodeValidateTool,
-    RuntimeTestTool,
-    ErrorDiagnoseTool,
-)
+from vibe_widget.llm.providers.base import LLMProvider
 
 
 class AgenticOrchestrator:
@@ -31,7 +21,7 @@ class AgenticOrchestrator:
     
     Flow:
     1. Receive DataFrame (already processed by DataProcessor)
-    2. Generate code with LLM
+    2. Generate code with LLM provider
     3. Validate code (Python-based)
     4. If errors: repair with LLM
     5. Return final code
@@ -39,28 +29,18 @@ class AgenticOrchestrator:
     
     def __init__(
         self,
-        api_key: str | None = None,
-        model: str | None = None,
+        provider: LLMProvider,
         max_repair_attempts: int = 3,
     ):
-        import os
-        self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
-        if not self.api_key:
-            raise ValueError(
-                "API key required. Pass api_key or set ANTHROPIC_API_KEY env variable."
-            )
-        # Use claude-3-5-sonnet as default if no model specified
-        self.model = model or "claude-3-5-sonnet-20241022"
-        self.client = Anthropic(api_key=self.api_key)
+        """
+        Initialize orchestrator with an LLM provider.
+        
+        Args:
+            provider: LLM provider instance (Anthropic, Gemini, or OpenAI)
+            max_repair_attempts: Maximum number of repair attempts
+        """
+        self.provider = provider
         self.max_repair_attempts = max_repair_attempts
-        
-        # Python-based validation tools
-        self.validate_tool = CodeValidateTool()
-        self.runtime_tool = RuntimeTestTool()
-        self.diagnose_tool = ErrorDiagnoseTool()
-        
-        # Artifacts from generation
-        self.artifacts = {}
     
     def generate(
         self,
@@ -88,14 +68,18 @@ class AgenticOrchestrator:
         
         self._emit(progress_callback, "step", "Analyzing data...")
         
-        # Build data context for LLM
-        data_info = self._build_data_info(df, exports, imports)
+        # Build data context for LLM using base class method
+        data_info = LLMProvider.build_data_info(df, exports, imports)
         
         self._emit(progress_callback, "step", f"Data: {df.shape[0]} rows × {df.shape[1]} columns")
         
-        # Generate code with LLM
+        # Generate code with LLM provider
         self._emit(progress_callback, "step", "Generating widget code...")
-        code = self._generate_code(description, data_info, progress_callback)
+        code = self.provider.generate_widget_code(
+            description=description,
+            data_info=data_info,
+            progress_callback=lambda msg: self._emit(progress_callback, "chunk", msg),
+        )
         
         # Validate code
         self._emit(progress_callback, "step", "Validating code...")
@@ -125,12 +109,16 @@ class AgenticOrchestrator:
             repair_attempts += 1
             self._emit(progress_callback, "step", f"Repairing code (attempt {repair_attempts})...")
             
-            code = self._repair_code(
-                code=code,
-                issues=issues,
-                data_info=data_info,
-                progress_callback=progress_callback,
-            )
+            # Use provider's fix_code_error for first issue if it's a clear error
+            if len(issues) == 1 and ("error" in issues[0].lower() or "exception" in issues[0].lower()):
+                code = self.provider.fix_code_error(
+                    broken_code=code,
+                    error_message=issues[0],
+                    data_info=data_info,
+                )
+            else:
+                # For validation issues, build a repair prompt manually
+                code = self._repair_with_issues(code, issues, data_info)
             
             # Re-validate
             validation = self.validate_tool.execute(
@@ -176,12 +164,10 @@ class AgenticOrchestrator:
         
         self._emit(progress_callback, "step", "Repairing code...")
         
-        fixed_code = self._repair_code(
-            code=code,
-            issues=[diagnosis.output.get("full_error", error_message)],
+        fixed_code = self.provider.fix_code_error(
+            broken_code=code,
+            error_message=diagnosis.output.get("full_error", error_message),
             data_info=data_info,
-            diagnosis=diagnosis.output,
-            progress_callback=progress_callback,
         )
         
         return fixed_code
@@ -207,19 +193,12 @@ class AgenticOrchestrator:
         """
         self._emit(progress_callback, "step", "Revising widget code...")
         
-        prompt = self._build_revision_prompt(code, revision_request, data_info)
-        
-        code_chunks = []
-        with self.client.messages.stream(
-            model=self.model,
-            max_tokens=8192,
-            messages=[{"role": "user", "content": prompt}],
-        ) as stream:
-            for text in stream.text_stream:
-                code_chunks.append(text)
-                self._emit(progress_callback, "chunk", text)
-        
-        revised_code = self._clean_code("".join(code_chunks))
+        revised_code = self.provider.revise_widget_code(
+            current_code=code,
+            revision_description=revision_request,
+            data_info=data_info,
+            progress_callback=lambda msg: self._emit(progress_callback, "chunk", msg),
+        )
         
         # Validate
         self._emit(progress_callback, "step", "Validating revision...")
@@ -227,239 +206,27 @@ class AgenticOrchestrator:
         
         if not validation.success:
             self._emit(progress_callback, "step", "Fixing validation issues...")
-            revised_code = self._repair_code(
-                code=revised_code,
-                issues=validation.output.get("issues", []),
-                data_info=data_info,
-                progress_callback=progress_callback,
-            )
+            issues = validation.output.get("issues", [])
+            revised_code = self._repair_with_issues(revised_code, issues, data_info)
         
         self._emit(progress_callback, "complete", "Revision complete")
         return revised_code
     
-    def _generate_code(
-        self,
-        description: str,
-        data_info: dict[str, Any],
-        progress_callback: Callable[[str, str], None] | None = None,
-    ) -> str:
-        """Generate widget code using LLM."""
-        prompt = self._build_generation_prompt(description, data_info)
-        
-        code_chunks = []
-        with self.client.messages.stream(
-            model=self.model,
-            max_tokens=8192,
-            messages=[{"role": "user", "content": prompt}],
-        ) as stream:
-            for text in stream.text_stream:
-                code_chunks.append(text)
-                self._emit(progress_callback, "chunk", text)
-        
-        return self._clean_code("".join(code_chunks))
-    
-    def _repair_code(
+    def _repair_with_issues(
         self,
         code: str,
         issues: list[str],
         data_info: dict[str, Any],
-        diagnosis: dict[str, Any] | None = None,
-        progress_callback: Callable[[str, str], None] | None = None,
     ) -> str:
-        """Repair code using LLM."""
-        prompt = self._build_repair_prompt(code, issues, data_info, diagnosis)
+        """Repair code using provider with list of issues."""
+        # Build a simple error message from issues
+        error_message = "Validation issues:\n" + "\n".join(f"- {issue}" for issue in issues)
         
-        message = self.client.messages.create(
-            model=self.model,
-            max_tokens=8192,
-            messages=[{"role": "user", "content": prompt}],
+        return self.provider.fix_code_error(
+            broken_code=code,
+            error_message=error_message,
+            data_info=data_info,
         )
-        
-        return self._clean_code(message.content[0].text)
-    
-    def _build_data_info(
-        self,
-        df: pd.DataFrame,
-        exports: dict[str, str],
-        imports: dict[str, str],
-    ) -> dict[str, Any]:
-        """Build concise data info for LLM context."""
-        sample = df.head(3).to_dict(orient="records") if not df.empty else []
-        
-        # Detect potential data characteristics
-        is_geospatial = any(
-            str(col).lower() in ['lat', 'latitude', 'lon', 'longitude', 'lng', 'geometry']
-            for col in df.columns
-        )
-        
-        temporal_cols = [
-            col for col in df.columns
-            if pd.api.types.is_datetime64_any_dtype(df[col])
-            or str(col).lower() in ['date', 'time', 'datetime', 'timestamp']
-        ]
-        
-        return {
-            "columns": df.columns.tolist(),
-            "dtypes": {col: str(dtype) for col, dtype in df.dtypes.items()},
-            "shape": df.shape,
-            "sample": sample,
-            "exports": exports,
-            "imports": imports,
-            "is_geospatial": is_geospatial,
-            "temporal_columns": temporal_cols,
-        }
-    
-    def _build_generation_prompt(
-        self,
-        description: str,
-        data_info: dict[str, Any],
-    ) -> str:
-        """Build concise generation prompt."""
-        columns = data_info.get("columns", [])
-        dtypes = data_info.get("dtypes", {})
-        sample = data_info.get("sample", [])
-        exports = data_info.get("exports", {})
-        imports = data_info.get("imports", {})
-        
-        # Build exports/imports section
-        traits_section = ""
-        if exports:
-            export_list = "\n".join([f"- {name}: {desc}" for name, desc in exports.items()])
-            traits_section += f"""
-EXPORTS (state to share):
-{export_list}
-- Initialize: model.set() + model.save_changes()
-- Update on interaction: model.set() + model.save_changes()
-"""
-        
-        if imports:
-            import_list = "\n".join([f"- {name}: {desc}" for name, desc in imports.items()])
-            traits_section += f"""
-IMPORTS (state from other widgets):
-{import_list}
-- Read: model.get("trait")
-- Subscribe: model.on("change:trait", handler)
-- Cleanup: model.off("change:trait", handler)
-"""
-        
-        return f"""Generate a React widget for AnyWidget.
-
-TASK: {description}
-
-DATA:
-- Columns: {', '.join(str(c) for c in columns) if columns else 'No data'}
-- Types: {dtypes}
-- Sample: {json.dumps(sample[:2], default=str) if sample else 'None'}
-{traits_section}
-
-RULES:
-1. export default function Widget({{ model, html, React }}) {{ ... }}
-2. Use html`...` tagged templates (htm), NOT JSX
-3. Access data: const data = model.get("data") || []
-4. Every useEffect MUST return cleanup function
-5. Use class= not className= in html templates
-6. CDN imports with versions: https://esm.sh/d3@7
-7. Fixed heights (400-600px), never 100vh
-8. No document.body, no ReactDOM.render
-
-TEMPLATE:
-```javascript
-import * as d3 from "https://esm.sh/d3@7";
-
-export default function Widget({{ model, html, React }}) {{
-  const data = model.get("data") || [];
-  const containerRef = React.useRef(null);
-
-  React.useEffect(() => {{
-    if (!containerRef.current) return;
-    // Initialize visualization
-    return () => {{ /* cleanup */ }};
-  }}, [data]);
-
-  return html`<div ref=${{containerRef}} style=${{{{ height: '400px' }}}}></div>`;
-}}
-```
-
-OUTPUT: Only JavaScript code. No markdown. No explanations."""
-    
-    def _build_repair_prompt(
-        self,
-        code: str,
-        issues: list[str],
-        data_info: dict[str, Any],
-        diagnosis: dict[str, Any] | None = None,
-    ) -> str:
-        """Build repair prompt."""
-        issues_text = "\n".join([f"- {issue}" for issue in issues])
-        
-        diagnosis_text = ""
-        if diagnosis:
-            diagnosis_text = f"""
-DIAGNOSIS:
-- Type: {diagnosis.get('error_type', 'unknown')}
-- Cause: {diagnosis.get('root_cause', 'unknown')}
-- Fix: {diagnosis.get('suggested_fix', 'unknown')}
-"""
-        
-        return f"""Fix this AnyWidget code.
-
-ISSUES:
-{issues_text}
-{diagnosis_text}
-
-CODE:
-```javascript
-{code}
-```
-
-DATA:
-- Columns: {data_info.get('columns', [])}
-- Exports: {data_info.get('exports', {{}})}
-- Imports: {data_info.get('imports', {{}})}
-
-RULES:
-1. export default function Widget({{ model, html, React }})
-2. html`...` templates, not JSX
-3. Guard all data access with null checks
-4. Every useEffect needs cleanup return
-5. CDN imports with versions
-
-OUTPUT: Only fixed JavaScript code. No markdown."""
-    
-    def _build_revision_prompt(
-        self,
-        code: str,
-        revision_request: str,
-        data_info: dict[str, Any],
-    ) -> str:
-        """Build revision prompt."""
-        return f"""Revise this AnyWidget code.
-
-REQUEST: {revision_request}
-
-CODE:
-```javascript
-{code}
-```
-
-DATA:
-- Columns: {data_info.get('columns', [])}
-- Exports: {data_info.get('exports', {{}})}
-- Imports: {data_info.get('imports', {{}})}
-
-RULES:
-1. Keep: export default function Widget({{ model, html, React }})
-2. Use html`...` templates
-3. Maintain cleanup handlers
-4. Keep CDN imports versioned
-
-OUTPUT: Only revised JavaScript code. No markdown."""
-    
-    def _clean_code(self, code: str) -> str:
-        """Clean code output."""
-        code = re.sub(r"```(?:javascript|jsx?|typescript|tsx?)?\s*\n?", "", code)
-        code = re.sub(r"\n?```\s*", "", code)
-        return code.strip()
     
     def _emit(
         self,
@@ -470,7 +237,3 @@ OUTPUT: Only revised JavaScript code. No markdown."""
         """Emit progress event."""
         if callback:
             callback(event_type, message)
-    
-    def get_pipeline_artifacts(self) -> dict[str, Any]:
-        """Get artifacts from the generation pipeline."""
-        return self.artifacts

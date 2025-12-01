@@ -61,7 +61,7 @@ class GeminiProvider(LLMProvider):
             else:
                 # Get complete response
                 response = self.client.generate_content(prompt)
-                return self._clean_code(response.text)
+                return self.clean_code(response.text)
                 
         except Exception as e:
             # Check for context length issues
@@ -88,7 +88,7 @@ class GeminiProvider(LLMProvider):
             return self._handle_stream(response, progress_callback)
         else:
             response = self.client.generate_content(prompt)
-            return self._clean_code(response.text)
+            return self.clean_code(response.text)
     
     def fix_code_error(
         self,
@@ -111,7 +111,7 @@ class GeminiProvider(LLMProvider):
         )
         
         response = fix_model.generate_content(prompt)
-        return self._clean_code(response.text)
+        return self.clean_code(response.text)
     
     def _handle_stream(self, response, progress_callback: Callable[[str], None]) -> str:
         """Handle streaming response."""
@@ -121,7 +121,7 @@ class GeminiProvider(LLMProvider):
                 code_chunks.append(chunk.text)
                 progress_callback(chunk.text)
         
-        return self._clean_code("".join(code_chunks))
+        return self.clean_code("".join(code_chunks))
     
     def _retry_with_shorter_prompt(
         self,
@@ -148,7 +148,7 @@ class GeminiProvider(LLMProvider):
             return self._handle_stream(response, progress_callback)
         else:
             response = self.client.generate_content(prompt)
-            return self._clean_code(response.text)
+            return self.clean_code(response.text)
     
     # Methods _build_prompt, _build_revision_prompt, _build_fix_prompt,
-    # _build_exports_imports_section, and _clean_code are inherited from base class
+    # _build_exports_imports_section, and clean_code are inherited from base class

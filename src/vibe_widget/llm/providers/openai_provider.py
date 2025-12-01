@@ -62,7 +62,7 @@ class OpenAIProvider(LLMProvider):
             else:
                 # Get complete response
                 response = self.client.chat.completions.create(**completion_params)
-                return self._clean_code(response.choices[0].message.content)
+                return self.clean_code(response.choices[0].message.content)
                 
         except Exception as e:
             # Check for context length issues
@@ -99,7 +99,7 @@ class OpenAIProvider(LLMProvider):
             return self._handle_stream(stream, progress_callback)
         else:
             response = self.client.chat.completions.create(**completion_params)
-            return self._clean_code(response.choices[0].message.content)
+            return self.clean_code(response.choices[0].message.content)
     
     def fix_code_error(
         self,
@@ -124,7 +124,7 @@ class OpenAIProvider(LLMProvider):
         
         response = self.client.chat.completions.create(**completion_params)
         
-        return self._clean_code(response.choices[0].message.content)
+        return self.clean_code(response.choices[0].message.content)
     
     def _handle_stream(self, stream, progress_callback: Callable[[str], None]) -> str:
         """Handle streaming response."""
@@ -135,7 +135,7 @@ class OpenAIProvider(LLMProvider):
                 code_chunks.append(text)
                 progress_callback(text)
         
-        return self._clean_code("".join(code_chunks))
+        return self.clean_code("".join(code_chunks))
     
     def _retry_with_shorter_prompt(
         self,
@@ -172,7 +172,7 @@ class OpenAIProvider(LLMProvider):
             return self._handle_stream(stream, progress_callback)
         else:
             response = self.client.chat.completions.create(**completion_params)
-            return self._clean_code(response.choices[0].message.content)
+            return self.clean_code(response.choices[0].message.content)
     
     # Methods _build_prompt, _build_revision_prompt, _build_fix_prompt,
-    # _build_exports_imports_section, and _clean_code are inherited from base class
+    # _build_exports_imports_section, and clean_code are inherited from base class

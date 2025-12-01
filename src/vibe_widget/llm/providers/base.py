@@ -255,8 +255,8 @@ CRITICAL: Subscribe with model.on("change:trait", handler), unsubscribe in clean
         
         return "\n".join(sections)
     
-    def _clean_code(self, code: str) -> str:
-        """Clean the generated code."""
+    def clean_code(self, code: str) -> str:
+        """Clean the generated code by removing markdown fences."""
         if not code:
             return ""
         
@@ -265,4 +265,41 @@ CRITICAL: Subscribe with model.on("change:trait", handler), unsubscribe in clean
         code = re.sub(r"\n?```\s*", "", code)
         
         return code.strip()
+    
+    @staticmethod
+    def build_data_info(
+        df,
+        exports: dict[str, str] | None = None,
+        imports: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        """Build data info dictionary from DataFrame."""
+        import pandas as pd
+        
+        exports = exports or {}
+        imports = imports or {}
+        
+        sample = df.head(3).to_dict(orient="records") if not df.empty else []
+        
+        # Detect potential data characteristics
+        is_geospatial = any(
+            str(col).lower() in ['lat', 'latitude', 'lon', 'longitude', 'lng', 'geometry']
+            for col in df.columns
+        )
+        
+        temporal_cols = [
+            col for col in df.columns
+            if pd.api.types.is_datetime64_any_dtype(df[col])
+            or str(col).lower() in ['date', 'time', 'datetime', 'timestamp']
+        ]
+        
+        return {
+            "columns": df.columns.tolist(),
+            "dtypes": {col: str(dtype) for col, dtype in df.dtypes.items()},
+            "shape": df.shape,
+            "sample": sample,
+            "exports": exports,
+            "imports": imports,
+            "is_geospatial": is_geospatial,
+            "temporal_columns": temporal_cols,
+        }
 
