@@ -9,7 +9,7 @@ import anywidget
 import pandas as pd
 import traitlets
 
-from vibe_widget.utils.code_parser import CodeStreamParser
+from vibe_widget.utils.code_parser import CodeStreamParser, RevisionStreamParser
 from vibe_widget.llm import get_provider
 from vibe_widget.llm.agentic import AgenticOrchestrator
 from vibe_widget.llm.providers.base import LLMProvider
@@ -27,6 +27,8 @@ class VibeWidget(anywidget.AnyWidget):
     code = traitlets.Unicode("").tag(sync=True)
     error_message = traitlets.Unicode("").tag(sync=True)
     retry_count = traitlets.Int(0).tag(sync=True)
+    grab_edit_request = traitlets.Dict({}).tag(sync=True)
+    edit_in_progress = traitlets.Bool(False).tag(sync=True)
 
     @classmethod
     def _create_with_dynamic_traits(
@@ -120,6 +122,7 @@ class VibeWidget(anywidget.AnyWidget):
         )
         
         self.observe(self._on_error, names='error_message')
+        self.observe(self._on_grab_edit, names='grab_edit_request')
         
         if show_progress:
             try:
@@ -153,6 +156,9 @@ class VibeWidget(anywidget.AnyWidget):
                 imports_serialized=imports_serialized,
             )
             
+            # Create agentic orchestrator with the provider (needed for edits even if cached)
+            self.orchestrator = AgenticOrchestrator(provider=provider)
+            
             if cached_widget:
                 # Use cached widget
                 self.logs = self.logs + ["✓ Found cached widget"]
@@ -167,9 +173,6 @@ class VibeWidget(anywidget.AnyWidget):
                 # Store data_info for error recovery
                 self.data_info = LLMProvider.build_data_info(df, self._exports, imports_serialized)
                 return
-            
-            # Create agentic orchestrator with the provider
-            self.orchestrator = AgenticOrchestrator(provider=provider)
             
             self.logs = self.logs + ["Generating widget code..."]
             
@@ -296,6 +299,151 @@ class VibeWidget(anywidget.AnyWidget):
             self.status = "error"
             self.logs = self.logs + [f"Fix attempt failed: {str(e)}"]
             self.error_message = ""
+
+    def _on_grab_edit(self, change):
+        """Handle element edit requests from frontend (React Grab)."""
+        request = change['new']
+        if not request:
+            return
+        
+        element_desc = request.get('element', {})
+        user_prompt = request.get('prompt', '')
+        
+        if not user_prompt:
+            return
+        
+        old_code = self.code
+        self._pending_old_code = old_code
+        self.edit_in_progress = True
+        self.status = 'generating'
+        self.logs = [f"Editing: {user_prompt[:50]}{'...' if len(user_prompt) > 50 else ''}"]
+        
+        old_position = 0
+        showed_analyzing = False
+        showed_applying = False
+        
+        parser = RevisionStreamParser()
+        
+        WINDOW_SIZE = 200
+        
+        def progress_callback(event_type: str, message: str):
+            """Stream progress updates to frontend."""
+            nonlocal old_position, showed_analyzing, showed_applying
+            
+            if event_type == "chunk":
+                chunk = message
+                
+                if not showed_analyzing:
+                    self.logs = self.logs + ["Analyzing code"]
+                    showed_analyzing = True
+                
+                window_start = max(0, old_position - WINDOW_SIZE)
+                window_end = min(len(old_code), old_position + WINDOW_SIZE + len(chunk))
+                window = old_code[window_start:window_end]
+                
+                found_at = window.find(chunk)
+                
+                if found_at != -1:
+                    old_position = window_start + found_at + len(chunk)
+                else:
+                    if not showed_applying:
+                        self.logs = self.logs + ["Applying changes"]
+                        showed_applying = True
+                    
+                    updates = parser.parse_chunk(chunk)
+                    if parser.has_new_pattern():
+                        for update in updates:
+                            if update["type"] == "micro_bubble":
+                                self.logs = self.logs + [update["message"]]
+                return
+            
+            if event_type == "complete":
+                self.logs = self.logs + [f"✓ {message}"]
+            elif event_type == "error":
+                self.logs = self.logs + [f"✘ {message}"]
+        
+        try:
+            revision_request = self._build_grab_revision_request(element_desc, user_prompt)
+            
+            clean_data_info = clean_for_json(self.data_info)
+            
+            revised_code = self.orchestrator.revise_code(
+                code=self.code,
+                revision_request=revision_request,
+                data_info=clean_data_info,
+                progress_callback=progress_callback,
+            )
+            
+            self.code = revised_code
+            self.status = 'ready'
+            self.logs = self.logs + ['✓ Edit applied']
+            
+            store = WidgetStore()
+            imports_serialized = {}
+            if self._imports:
+                for import_name in self._imports.keys():
+                    imports_serialized[import_name] = f"<imported_trait:{import_name}>"
+            
+            widget_entry = store.save(
+                widget_code=revised_code,
+                description=self.description,
+                data_var_name=self._widget_metadata.get('data_var_name') if self._widget_metadata else None,
+                data_shape=tuple(self._widget_metadata.get('data_shape', [0, 0])) if self._widget_metadata else (0, 0),
+                model=self._widget_metadata.get('model', 'unknown') if self._widget_metadata else 'unknown',
+                exports=self._exports,
+                imports_serialized=imports_serialized,
+                notebook_path=store.get_notebook_path(),
+            )
+            self._widget_metadata = widget_entry
+            self.logs = self.logs + [f"Saved: {widget_entry['slug']} v{widget_entry['version']}"]
+            
+        except Exception as e:
+            if "cancelled" in str(e).lower():
+                self.code = old_code
+                self.status = 'ready'
+                self.logs = self.logs + ['✗ Edit cancelled']
+            else:
+                self.status = 'error'
+                self.logs = self.logs + [f'✘ Edit failed: {str(e)}']
+        
+        self.edit_in_progress = False
+        self.grab_edit_request = {}
+        self._pending_old_code = None
+
+    def _build_grab_revision_request(self, element_desc: dict, user_prompt: str) -> str:
+        """Build a revision request that identifies the element for the LLM."""
+        sibling_hint = ""
+        sibling_count = element_desc.get('siblingCount', 1)
+        is_data_bound = element_desc.get('isDataBound', False)
+        
+        if is_data_bound:
+            sibling_hint = f"""
+
+IMPORTANT: This element is likely DATA-BOUND (one of {sibling_count} sibling <{element_desc.get('tag')}> elements).
+This typically means it was created by D3's .selectAll().data().join() pattern or similar.
+To modify this element, find and modify the D3 selection code that creates these elements,
+not a single static element in the template."""
+        
+        style_info = ""
+        style_hints = element_desc.get('styleHints', {})
+        if style_hints:
+            style_parts = [f"{k}: {v}" for k, v in style_hints.items() if v and v != 'none']
+            if style_parts:
+                style_info = f"\n- Current styles: {', '.join(style_parts)}"
+        
+        return f"""USER REQUEST: {user_prompt}
+
+TARGET ELEMENT:
+- Tag: {element_desc.get('tag')}
+- Classes: {element_desc.get('classes', 'none')}
+- Text content: {element_desc.get('text', 'none')}
+- SVG/HTML attributes: {element_desc.get('attributes', 'none')}
+- Location in DOM: {element_desc.get('ancestors', '')} > {element_desc.get('tag')}
+- Sibling count: {sibling_count} (same tag in parent){style_info}
+- HTML representation: {element_desc.get('description', '')}
+{sibling_hint}
+
+Find this element in the code and apply the requested change. The element should be identifiable by its tag, classes, text content, or SVG attributes. Modify ONLY this element or closely related code."""
 
 
 def create(
