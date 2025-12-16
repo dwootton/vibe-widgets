@@ -413,11 +413,6 @@ function AppWrapper({ model }) {
       <${LoadingOverlay} 
         logs=${logs} 
         hasExistingWidget=${hasCode}
-        editInProgress=${model.get('edit_in_progress')}
-        onCancel=${() => {
-          model.set('cancel_edit', true);
-          model.save_changes();
-        }}
       />
     `}
     
@@ -461,9 +456,7 @@ function render({ model, el }) {
 
 export default { render };
 
-function LoadingOverlay({ logs, hasExistingWidget, editInProgress, onCancel }) {
-  const [cancelHovered, setCancelHovered] = React.useState(false);
-  
+function LoadingOverlay({ logs, hasExistingWidget }) {
   if (hasExistingWidget) {
     return html`
       <div class="loading-overlay" style=${{
@@ -482,31 +475,6 @@ function LoadingOverlay({ logs, hasExistingWidget, editInProgress, onCancel }) {
           maxWidth: '500px',
         }}>
           <${ProgressMap} logs=${logs} />
-          ${editInProgress && html`
-            <div style=${{
-              display: 'flex',
-              justifyContent: 'center',
-              marginTop: '16px',
-            }}>
-              <button
-                onClick=${onCancel}
-                onMouseEnter=${() => setCancelHovered(true)}
-                onMouseLeave=${() => setCancelHovered(false)}
-                style=${{
-                  padding: '8px 20px',
-                  borderRadius: '6px',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                  background: cancelHovered ? 'rgba(255, 100, 100, 0.3)' : 'rgba(255, 255, 255, 0.1)',
-                  color: cancelHovered ? '#ff6b6b' : 'rgba(255, 255, 255, 0.7)',
-                  fontSize: '13px',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease',
-                }}
-              >
-                Cancel Edit
-              </button>
-            </div>
-          `}
         </div>
       </div>
     `;
