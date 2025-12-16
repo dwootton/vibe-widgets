@@ -6,6 +6,7 @@ with a JSON index for quick lookup and versioning.
 """
 import hashlib
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -219,6 +220,9 @@ class WidgetStore:
         widget_id = f"{short_hash}-v{version}"
         now = datetime.utcnow().isoformat()
         
+        # Extract components from generated code
+        components = self.extract_components(widget_code)
+        
         widget_entry = {
             "id": widget_id,
             "slug": slug,
@@ -238,6 +242,7 @@ class WidgetStore:
             "origin": "local",
             "remote_url": None,
             "base_widget_id": None,
+            "components": components,
         }
         
         self.index["widgets"].append(widget_entry)
@@ -249,6 +254,84 @@ class WidgetStore:
         """Load widget JS code from disk."""
         widget_file = self.widgets_dir / widget_entry["file_name"]
         return widget_file.read_text(encoding='utf-8')
+    
+    def load_by_id(self, widget_id: str) -> tuple[dict[str, Any], str] | None:
+        """
+        Load widget by ID.
+        
+        Args:
+            widget_id: Widget ID (format: {short_hash}-v{version})
+        
+        Returns:
+            Tuple of (widget_entry, code) if found, None otherwise
+        """
+        for widget_entry in self.index["widgets"]:
+            if widget_entry["id"] == widget_id:
+                widget_file = self.widgets_dir / widget_entry["file_name"]
+                if widget_file.exists():
+                    code = widget_file.read_text(encoding='utf-8')
+                    return widget_entry, code
+        return None
+    
+    def load_from_file(self, file_path: Path | str) -> tuple[dict[str, Any], str] | None:
+        """
+        Load widget from a local JS file path.
+        
+        Args:
+            file_path: Path to JavaScript file
+        
+        Returns:
+            Tuple of (minimal_widget_entry, code) if file exists, None otherwise
+        """
+        file_path = Path(file_path)
+        if not file_path.exists():
+            return None
+        
+        code = file_path.read_text(encoding='utf-8')
+        
+        # Create minimal widget entry for external file
+        widget_entry = {
+            "id": f"file-{file_path.stem}",
+            "slug": file_path.stem,
+            "file_name": file_path.name,
+            "description": f"Loaded from {file_path}",
+            "origin": "file",
+            "file_path": str(file_path),
+            "components": self.extract_components(code),
+        }
+        
+        return widget_entry, code
+    
+    def extract_components(self, code: str) -> list[str]:
+        """
+        Extract named exports (components) from JavaScript code.
+        
+        Detects patterns like:
+        - export const ComponentName = ...
+        - export function ComponentName(...) {...}
+        - export class ComponentName {...}
+        
+        Args:
+            code: JavaScript code
+        
+        Returns:
+            List of component names found
+        """
+        components = []
+        
+        # Match: export const Name = ...
+        const_exports = re.findall(r'export\s+const\s+([A-Z][a-zA-Z0-9_]*)\s*=', code)
+        components.extend(const_exports)
+        
+        # Match: export function Name(...) {...}
+        func_exports = re.findall(r'export\s+function\s+([A-Z][a-zA-Z0-9_]*)\s*\(', code)
+        components.extend(func_exports)
+        
+        # Match: export class Name {...}
+        class_exports = re.findall(r'export\s+class\s+([A-Z][a-zA-Z0-9_]*)\s*\{', code)
+        components.extend(class_exports)
+        
+        return list(set(components))  # Remove duplicates
     
     def get_notebook_path(self) -> str | None:
         """Try to infer the current notebook path from IPython."""

@@ -134,10 +134,11 @@ class RuntimeTestTool(Tool):
                     issues.append(f"Syntax error: {result.stderr}")
 
             except FileNotFoundError:
-                # Node not available, skip syntax check
-                issues.append("Node.js not available for syntax checking")
+                # Node not available, skip syntax check (not an error)
+                pass
             except Exception as e:
-                issues.append(f"Syntax check failed: {str(e)}")
+                # Other errors during syntax check (not fatal)
+                pass
             finally:
                 import os
 

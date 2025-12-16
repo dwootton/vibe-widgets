@@ -70,17 +70,25 @@ class AnthropicProvider(LLMProvider):
         current_code: str,
         revision_description: str,
         data_info: dict[str, Any],
+        base_code: str | None = None,
+        base_components: list[str] | None = None,
         progress_callback: Callable[[str], None] | None = None,
     ) -> str:
         """Revise existing widget code."""
-        prompt = self._build_revision_prompt(current_code, revision_description, data_info)
+        prompt = self._build_revision_prompt(
+            current_code,
+            revision_description,
+            data_info,
+            base_code=base_code,
+            base_components=base_components,
+        )
         
         if progress_callback:
             with self.client.messages.stream(
                 model=self.model,
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=8192,
-                temperature=0.7,
+                temperature=0.5,  # Lower temp for more focused revisions
             ) as stream:
                 return self._handle_stream(stream, progress_callback)
         else:
@@ -88,7 +96,7 @@ class AnthropicProvider(LLMProvider):
                 model=self.model,
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=8192,
-                temperature=0.7,
+                temperature=0.5,
             )
             return self.clean_code(response.content[0].text)
     
