@@ -104,6 +104,37 @@ function ProgressMap({ logs }) {
           margin-right: 6px;
         }
         
+        .animated-dots {
+          display: inline-block;
+          margin-left: 2px;
+        }
+        
+        .animated-dots span {
+          animation: dotPulse 1.4s infinite;
+          opacity: 0;
+        }
+        
+        .animated-dots span:nth-child(1) {
+          animation-delay: 0s;
+        }
+        
+        .animated-dots span:nth-child(2) {
+          animation-delay: 0.2s;
+        }
+        
+        .animated-dots span:nth-child(3) {
+          animation-delay: 0.4s;
+        }
+        
+        @keyframes dotPulse {
+          0%, 80%, 100% {
+            opacity: 0;
+          }
+          40% {
+            opacity: 1;
+          }
+        }
+        
         @keyframes fadeIn {
           to {
             opacity: 1;
@@ -112,7 +143,9 @@ function ProgressMap({ logs }) {
       </style>
       <div class="progress-container" ref=${containerRef}>
         ${logs.map((log, idx) => html`
-          <div key=${idx} class="log-entry" style=${{ '--entry-index': idx }}>${log}</div>
+          <div key=${idx} class="log-entry" style=${{ '--entry-index': idx }}>
+            ${log}${idx === logs.length - 1 && html`<span class="animated-dots"><span>.</span><span>.</span><span>.</span></span>`}
+          </div>
         `)}
       </div>
     </div>
@@ -211,7 +244,7 @@ function SandboxedRunner({ code, model }) {
   return html`<${GuestWidget} model=${model} html=${html} React=${React} />`;
 }
 
-function FloatingMenu({ isOpen, onToggle, onGrabModeStart }) {
+function FloatingMenu({ isOpen, onToggle, onGrabModeStart, isEditMode }) {
   return html`
     <div class="floating-menu-container">
       <style>
@@ -222,30 +255,37 @@ function FloatingMenu({ isOpen, onToggle, onGrabModeStart }) {
           z-index: 1000;
         }
         .menu-dot {
-          width: 32px;
-          height: 32px;
-          border-radius: 50%;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          width: 28px;
+          height: 28px;
+          border-radius: 6px;
+          background: #f97316;
           cursor: pointer;
           display: flex;
           align-items: center;
           justify-content: center;
-          box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+          box-shadow: 0 2px 8px rgba(249, 115, 22, 0.3);
           transition: all 0.3s ease;
         }
         .menu-dot:hover {
           transform: scale(1.1);
-          box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+          box-shadow: 0 4px 16px rgba(249, 115, 22, 0.5);
+        }
+        .menu-dot.spinning {
+          animation: spin 2s linear infinite;
+        }
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
         }
         .menu-dot-inner {
-          width: 8px;
-          height: 8px;
-          border-radius: 50%;
+          width: 6px;
+          height: 6px;
+          border-radius: 2px;
           background: white;
         }
         .menu-options {
           position: absolute;
-          top: 40px;
+          top: 36px;
           right: 0;
           background: #1e1e1e;
           border: 1px solid #333;
@@ -271,7 +311,7 @@ function FloatingMenu({ isOpen, onToggle, onGrabModeStart }) {
         }
       </style>
       
-      <div class="menu-dot" onClick=${onToggle}>
+      <div class="menu-dot ${isEditMode ? 'spinning' : ''}" onClick=${onToggle}>
         <div class="menu-dot-inner"></div>
       </div>
       
@@ -378,6 +418,7 @@ function AppWrapper({ model }) {
         isOpen=${isMenuOpen} 
         onToggle=${() => setMenuOpen(!isMenuOpen)}
         onGrabModeStart=${handleGrabStart}
+        isEditMode=${!!grabMode}
       />
     `}
       

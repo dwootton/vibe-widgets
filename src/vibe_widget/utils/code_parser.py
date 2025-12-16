@@ -169,67 +169,67 @@ class RevisionStreamParser:
     PATTERNS = {
         "fill_color": (
             r'fill[=:]\s*["\']?#[0-9a-fA-F]+|fill[=:]\s*["\']?\w+',
-            "Updating fill color..."
+            "Updating fill color"
         ),
         "stroke_color": (
             r'stroke[=:]\s*["\']?#[0-9a-fA-F]+',
-            "Adjusting stroke..."
+            "Adjusting stroke"
         ),
         "style_change": (
             r'style=\$\{\{[^}]*(?:color|background|font|border|padding|margin)',
-            "Applying style changes..."
+            "Applying style changes"
         ),
         "attr_update": (
             r'\.attr\(["\'](?:fill|stroke|r|width|height|x|y|cx|cy)',
-            "Updating element attributes..."
+            "Updating element attributes"
         ),
         "text_update": (
             r'\.text\(|textContent',
-            "Updating text content..."
+            "Updating text content"
         ),
         "transition": (
             r'\.transition\(\)',
-            "Adding transition effects..."
+            "Adding transition effects"
         ),
         "event_handler": (
             r'\.on\(["\'](?:click|mouseover|mouseout|mouseenter|mouseleave)',
-            "Configuring interactions..."
+            "Configuring interactions"
         ),
         "scale_domain": (
             r'\.domain\(\[',
-            "Adjusting scale domain..."
+            "Adjusting scale domain"
         ),
         "scale_range": (
             r'\.range\(\[',
-            "Setting scale range..."
+            "Setting scale range"
         ),
         "opacity": (
             r'opacity[=:]\s*[\d.]+',
-            "Adjusting opacity..."
+            "Adjusting opacity"
         ),
         "font_size": (
             r'font-?[sS]ize[=:]\s*[\d]+',
-            "Updating font size..."
+            "Updating font size"
         ),
         "transform": (
             r'transform[=:]\s*["\']|\.attr\(["\']transform',
-            "Applying transformations..."
+            "Applying transformations"
         ),
         "class_update": (
             r'class[=:]\s*["\']|classList',
-            "Updating element classes..."
+            "Updating element classes"
         ),
         "dimension": (
             r'(?:width|height)[=:]\s*[\d]+',
-            "Adjusting dimensions..."
+            "Adjusting dimensions"
         ),
         "radius": (
             r'(?:rx|ry|r)[=:]\s*[\d]+|\.attr\(["\']r["\']',
-            "Updating radius..."
+            "Updating radius"
         ),
         "border_radius": (
             r'border-?[rR]adius[=:]\s*[\d]+',
-            "Adjusting border radius..."
+            "Adjusting border radius"
         ),
     }
     
