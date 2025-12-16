@@ -314,14 +314,26 @@ class VibeWidget(anywidget.AnyWidget):
         self.status = 'generating'
         self.logs = [f"Editing: {user_prompt[:50]}{'...' if len(user_prompt) > 50 else ''}"]
         
+        chunk_count = 0
+        
         def progress_callback(event_type: str, message: str):
             """Stream progress updates to frontend."""
+            nonlocal chunk_count
+            
+            if event_type == "chunk":
+                chunk_count += 1
+                if chunk_count % 20 == 0:
+                    if self.logs and self.logs[-1].startswith("Generating code..."):
+                        self.logs = self.logs[:-1] + [f"Generating code... ({chunk_count} chunks)"]
+                    else:
+                        self.logs = self.logs + [f"Generating code... ({chunk_count} chunks)"]
+                return
+            
             event_messages = {
                 "step": f"➤ {message}",
                 "thinking": f"💭 {message[:100]}...",
                 "complete": f"✓ {message}",
                 "error": f"✘ {message}",
-                "chunk": None,  # Don't log raw chunks
             }
             
             display_msg = event_messages.get(event_type)
