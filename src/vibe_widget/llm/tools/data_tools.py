@@ -48,8 +48,6 @@ class DataLoadTool(Tool):
             # 2. Path or string
             elif isinstance(source, (str, Path)):
                 source_str = str(source).lower()
-                print(f"Loading data from source: {source_str}")
-                # Web URL
                 if source_str.startswith(('http://', 'https://')):
                     data = self._load_web(source)
                 elif source_str.endswith('.csv') or source_str.endswith('.tsv'):

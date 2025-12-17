@@ -81,14 +81,20 @@ Describe your viz in plain English. The AI writes production-ready React. You ge
 **→ Widgets That Talk to Each Other**  
 Select points in one chart → instantly updates another. Paint terrain → watch it render in 3D. It's like your visualizations are texting each other.
 
-**→ Eat Any Data Format**  
-Pandas DataFrames? Obviously. But also: CSV, JSON, NetCDF, XML, PDF tables, seismic data (ISF), scraped web pages, live streams. If it's data, we'll visualize it.
+**Universal Data Support**  
+Works with DataFrames, CSV, JSON, NetCDF, XML, PDF tables, ISF seismic data, web pages, and more. Intelligent data loading handles format detection and preprocessing automatically.
 
-**→ Actually Custom Stuff**  
-Not limited to "bar chart but blue this time." Want a 3D solar system? An interactive game board? A terrain painter? Just ask. The AI builds it from scratch.
+**Widget Composition**  
+Create interactive dashboards where widgets communicate through a simple export/import system. Select data in one chart and watch others update instantly.
 
-**→ Smart Caching**  
-Same description + data = instant load from cache. Different description = new widget, stored separately. It's like git for visualizations.
+**Highly Customizable**  
+Not limited to standard charts. Generate 3D visualizations, interactive games, custom UI components, or anything React can render.
+
+**Smart Caching**  
+Generated widgets are automatically cached. Same description and data structure loads instantly from disk without regenerating.
+
+**Multi-Model Support**  
+Choose between Claude (Anthropic), GPT (OpenAI), Gemini (Google), or any OpenRouter-supported model.
 
 ---
 
@@ -98,46 +104,55 @@ Same description + data = instant load from cache. Different description = new w
 pip install vibe-widget
 ```
 
-Or with `uv`:
-```bash
-uv pip install vibe-widget
-```
+Set your API key for your preferred AI provider:
 
-Set your API key (pick your AI flavor):
 ```bash
-export ANTHROPIC_API_KEY='your-key'    # for Claude
+# Choose one based on your preferred model
+export ANTHROPIC_API_KEY='your-key'    # for Claude (default)
 export OPENAI_API_KEY='your-key'       # for GPT
 export GEMINI_API_KEY='your-key'       # for Gemini
+export OPENROUTER_API_KEY='your-key'   # for OpenRouter models
 ```
 
 ---
 
-## Quickstart (Seriously, It's This Easy)
+## Quick Start
 
 ```python
 import pandas as pd
 import vibe_widget as vw
 
-# Pick your AI (optional, defaults to Claude)
-vw.config(model="gemini")  # or "openai" or "anthropic"
-
-# Got data?
+# Load your data
 df = pd.read_csv('sales_data.csv')
 
-# Describe what you want
+# Create a visualization with natural language
 widget = vw.create(
     "bar chart of sales by region, sorted high to low, with tooltips",
     df
 )
 ```
 
-The AI will analyze your data, write React code, validate it, fix any bugs, and render it. You just chill.
+That's it. The AI analyzes your data, generates React code, validates it, and renders an interactive widget.
+
+### Configuration
+
+```python
+# Choose your AI model (optional, defaults to Claude)
+vw.config(model="gemini")  # or "openai", "anthropic", "openrouter"
+
+# Or specify per widget
+widget = vw.create("scatter plot", df, model="openai/gpt-4-turbo")
+
+# View available models
+vw.models()
+```
 
 ---
 
-## Real Examples
+## Examples
 
-**Basic Viz**
+### Basic Visualizations
+
 ```python
 df = pd.DataFrame({
     'planet': ['Mercury', 'Venus', 'Earth', 'Mars'],
@@ -146,160 +161,212 @@ df = pd.DataFrame({
 })
 
 widget = vw.create(
-    "3D scatter plot: distance vs mass, size by mass, make it spinny",
+    "3D scatter plot: distance vs mass, size by mass, with rotation controls",
     df
 )
 ```
 
-**Scrape the Web**
+### Web Scraping
+
 ```python
 widget = vw.create(
-    "show Hacker News stories as cards, let me sort by score",
+    "show Hacker News stories as cards with sorting by score",
     "https://news.ycombinator.com"
 )
 ```
 
-**Extract PDF Tables**
+### PDF Extraction
+
 ```python
 widget = vw.create(
-    "interactive table from this PDF with sorting",
+    "extract tables from PDF and display as interactive sortable table",
     "report.pdf"
 )
 ```
 
-**Climate Data (NetCDF)**
+### Climate Data (NetCDF)
+
 ```python
 widget = vw.create(
-    "heatmap of sea surface temps, zoomable",
+    "heatmap of sea surface temperatures with zoom controls",
     "ocean_data.nc"
 )
 ```
 
-**Linked Widgets (The Cool Part)**
+### Linked Widgets
+
+Create dashboards where widgets communicate:
+
 ```python
-# Widget 1: Scatter with selection
+# Widget 1: Scatter with brush selection
 scatter = vw.create(
-    "scatter plot with brush selection",
+    "scatter plot with brush selection tool",
     df,
     exports={"selected": "indices of selected points"}
 )
 
-# Widget 2: Histogram that reacts
+# Widget 2: Histogram that reacts to selection
 histogram = vw.create(
-    "histogram highlighting selected points from scatter",
+    "histogram with highlighted bars for selected data",
     df,
     imports={"selected": scatter}
 )
-
-# Select in scatter → histogram updates instantly ✨
 ```
 
-More examples: terrain editors, solar system explorers, game state visualizers → check [`examples/cross_widget_interactions.ipynb`](examples/cross_widget_interactions.ipynb)
+When you select points in the scatter plot, the histogram automatically highlights corresponding data.
+
+### Iterative Refinement
+
+```python
+# Create initial widget
+v1 = vw.create("basic scatter plot", df)
+
+# Refine it
+v2 = vw.revise("add color by category", v1)
+
+# Refine further
+v3 = vw.revise("make points larger and add tooltips", v2)
+```
+
+More examples available in [`examples/`](examples/) directory.
 
 ---
 
-## The Important Bits
+## API Reference
 
-**Data Handling**  
-→ Auto-detects formats and types  
-→ Samples huge datasets (>100k rows) smartly  
-→ Supports CSV, JSON, NetCDF, XML, ISF, PDF, web scraping  
+### `create()`
 
-**Code Generation**  
-→ LLM writes React components  
-→ Validates and auto-fixes errors  
-→ Iterates until it works  
-
-**Widget Communication**  
-→ Export/import system for state sharing  
-→ Automatic sync between widgets  
-→ Built on Jupyter widgets (ipywidgets)  
-
-**Caching**  
-→ Same input = instant cache hit  
-→ Organized in `.vibewidget/` folder  
-→ Track all your widget versions  
-
----
-
-## API (The Only Function You Need)
+Create a new widget from scratch.
 
 ```python
 widget = vw.create(
-    description="natural language description of your viz",
-    data=df,                        # DataFrame, file path, or URL
-    model="anthropic",              # "anthropic", "openai", or "gemini"
-    exports={"trait": "description"},   # what this widget shares
-    imports={"trait": other_widget},    # what this widget receives
+    description: str,           # Natural language description
+    data=None,                  # DataFrame, file path, URL, or None
+    model=None,                 # AI model to use (optional)
+    show_progress=True,         # Show generation progress
+    exports=None,               # Dict of {trait_name: description}
+    imports=None,               # Dict of {trait_name: source_widget}
+    config=None                 # Config object (optional)
 )
 ```
 
-**Description Tips**  
-Be specific: "3D scatter with rotation" beats "show the data"  
-Mention interactions: "with hover tooltips", "clickable legend"  
-Style it: "dark theme", "sorted by value", "highlight outliers"  
+**Parameters:**
 
-**Data Sources**  
-→ Pandas DataFrame (the classic)  
-→ File paths: `.csv`, `.json`, `.nc`, `.xml`, `.isf`, `.pdf`  
-→ URLs (we'll scrape it)  
-→ `None` (for widgets driven purely by imports)  
+- `description`: Natural language description of your visualization
+  - Be specific: "3D scatter with rotation" beats "show the data"
+  - Mention interactions: "with hover tooltips", "clickable legend"
+  - Include styling: "dark theme", "sorted by value", "highlight outliers"
 
-**Model Selection**  
+- `data`: Your data source
+  - `pd.DataFrame`: Direct DataFrame
+  - `str` or `Path`: File path (CSV, JSON, NetCDF, XML, PDF, etc.)
+  - `str` (URL): Web page to scrape
+  - `None`: For widgets driven purely by imports
+
+- `model`: AI model selection
+  - `"anthropic"` / `"claude"`: Claude models (default)
+  - `"openai"` / `"gpt"`: GPT models
+  - `"gemini"`: Google Gemini
+  - `"openrouter"`: OpenRouter service
+  - Specific model: `"openai/gpt-4-turbo"`
+
+- `exports`: State this widget shares with others
+  - Format: `{"trait_name": "description of what this represents"}`
+  - Example: `{"selected": "indices of selected data points"}`
+
+- `imports`: State this widget receives from others
+  - Format: `{"trait_name": source_widget or source_widget.trait}`
+  - Example: `{"selected": scatter_widget}`
+
+### `revise()`
+
+Build upon an existing widget.
+
 ```python
-vw.config(model="openrouter")                 # uses the standard default (see vw.models())
-vw.config(model="openrouter", mode="premium") # uses the premium default
-
-# or per-widget
-widget = vw.create("...", df, model="openai/gpt-5.1-codex")
-
-# see all options
-vw.models()  # prints defaults + pinned options, and returns a dict-like object (concise repr in notebooks)
-vw.models(show="all")  # prints a longer live list too
+widget = vw.revise(
+    description: str,           # Description of changes
+    source,                     # Widget, ComponentReference, ID, or path
+    data=None,                  # Optional new data
+    model=None,                 # Optional model override
+    show_progress=True,
+    exports=None,
+    imports=None,
+    config=None
+)
 ```
 
----
+**Source types:**
+- `VibeWidget`: Existing widget variable
+- `ComponentReference`: `widget.component_name`
+- `str`: Widget ID from cache (e.g., "abc123-v1")
+- `Path`: File path to widget JS file
 
-## Examples & Notebooks
+### `config()`
 
-→ [`examples/pdf_and_web_extraction.ipynb`](examples/pdf_and_web_extraction.ipynb) - PDFs and web scraping  
-→ [`examples/cross_widget_interactions.ipynb`](examples/cross_widget_interactions.ipynb) - Linked visualizations  
-→ [`tests/test_agentic_demo.ipynb`](tests/test_agentic_demo.ipynb) - Full test suite  
+Configure global settings.
+
+```python
+vw.config(
+    model="anthropic",          # Default model
+    mode="standard",            # "standard" or "premium"
+    api_key=None               # Optional API key override
+)
+```
+
+### `models()`
+
+View available models.
+
+```python
+vw.models()                    # Show defaults and pinned models
+vw.models(show="all")          # Show all available models
+vw.models(verbose=False)       # Quiet mode
+```
 
 ---
 
 ## How It Works
 
 ```
-You type English
-    ↓
-DataProcessor figures out your data
-    ↓
-AI writes React code (via LLM providers)
-    ↓
-Code validated & tested
-    ↓
-WidgetStore caches it
-    ↓
-You get a working visualization
+Natural Language → Data Processing → AI Code Generation → Validation → Caching → Interactive Widget
 ```
 
-**Architecture**:
-- **core.py** - Main VibeWidget class and `create()` function
-- **DataLoader()** - Unified data loading (CSV, JSON, NetCDF, PDF, web, etc.)
-- **agentic.py** - Orchestrates LLM code generation and validation
-- **providers/** - Multi-provider LLM support (Anthropic, OpenAI, Gemini)
-- **util.py** - Clean utility functions for JSON serialization & trait handling
-- **widget_store.py** - Smart caching system
+**Architecture:**
+
+- **Core Module** (`core.py`): Main VibeWidget class, `create()` and `revise()` functions
+- **Data Loading** (`data_tools.py`): Universal data loader supporting 15+ formats
+- **Agentic Orchestration** (`agentic.py`): Coordinates LLM code generation and validation
+- **Multi-Provider LLMs** (`providers/`): Support for Anthropic, OpenAI, Google, OpenRouter
+- **Validation Tools** (`code_tools.py`): Syntax checking and code validation
+- **Widget Store** (`widget_store.py`): Smart caching and version management
+- **Code Parser** (`code_parser.py`): Stream parsing for real-time generation feedback
+
+**Key Features:**
+
+- **Smart Data Handling**: Auto-detects formats, handles large datasets via sampling
+- **Code Generation**: LLM generates React components with validation and auto-repair
+- **Widget Communication**: Export/import system for reactive dashboards
+- **Caching**: Hash-based caching prevents redundant generation
+- **Error Recovery**: Automatic error detection and fixing for runtime issues
+
+---
+
+## Example Notebooks
+
+- [`examples/cross_widget_interactions.ipynb`](examples/cross_widget_interactions.ipynb) - Interactive dashboards with linked widgets
+- [`examples/pdf_and_web_extraction.ipynb`](examples/pdf_and_web_extraction.ipynb) - PDF tables and web scraping
+- [`examples/revise_example.ipynb`](examples/revise_example.ipynb) - Iterative widget refinement
+- [`tests/test_agentic_demo.ipynb`](tests/test_agentic_demo.ipynb) - Comprehensive test suite
+
 ---
 
 ## Contributing
 
-Want to make this better? Hell yeah.
+Contributions welcome! To get started:
 
 ```bash
-git clone https://github.com/yourusername/vibe-widget.git
-cd vibe-widget
+git clone https://github.com/dwootton/vibe-widgets.git
+cd vibe-widgets
 pip install -e ".[dev]"
 pytest
 ```
@@ -308,22 +375,19 @@ pytest
 
 ## License
 
-MIT - do whatever you want with it
+MIT License - see [LICENSE](LICENSE) for details
 
 ---
 
-## Props To
+## Acknowledgments
 
-→ Claude, GPT, and Gemini for the AI magic  
-→ anywidget & ipywidgets for the Jupyter integration  
-→ Traitlets for state management  
-→ Crawl4AI for web scraping  
-→ Camelot for PDF extraction  
-
----
-
-**[⭐ Star on GitHub](https://github.com/yourusername/vibe-widget) | [📖 Docs](https://www.dylanwootton.com/vibe-widgets/index.html) | [🐛 Report Bug](https://github.com/yourusername/vibe-widget/issues)**
+Built with:
+- [Anthropic Claude](https://www.anthropic.com/), [OpenAI GPT](https://openai.com/), [Google Gemini](https://deepmind.google/technologies/gemini/)
+- [anywidget](https://anywidget.dev/) & [ipywidgets](https://ipywidgets.readthedocs.io/)
+- [Traitlets](https://traitlets.readthedocs.io/) for state management
+- [Crawl4AI](https://github.com/unclecode/crawl4ai) for web scraping
+- [Camelot](https://camelot-py.readthedocs.io/) for PDF extraction
 
 ---
 
-*Made with ✨vibes✨ and probably too much coffee*
+**[Documentation](https://www.dylanwootton.com/vibe-widgets/) | [GitHub](https://github.com/dwootton/vibe-widgets) | [Report Issues](https://github.com/dwootton/vibe-widgets/issues)**

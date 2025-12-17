@@ -130,7 +130,6 @@ class CodeStreamParser:
                         "type": "action_tile",
                         "title": "Loaded dependency",
                         "message": message,
-                        "icon": "→"
                     })
         
         return updates

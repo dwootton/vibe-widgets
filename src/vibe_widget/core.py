@@ -16,20 +16,13 @@ from vibe_widget.llm.providers.base import LLMProvider
 from vibe_widget.llm.tools.data_tools import DataLoadTool
 from vibe_widget.config import get_global_config, Config
 from vibe_widget.utils.widget_store import WidgetStore
-from vibe_widget.utils.util import clean_for_json, initial_import_value, serialize_imports_for_prompt
+from vibe_widget.utils.util import clean_for_json, initial_import_value
 
 
 class ComponentReference:
     """Reference to a component within a widget for composition."""
     
     def __init__(self, widget: "VibeWidget", component_name: str):
-        """
-        Initialize component reference.
-        
-        Args:
-            widget: Source widget containing the component
-            component_name: Name of the component
-        """
         self.widget = widget
         self.component_name = component_name
     
@@ -185,8 +178,6 @@ class VibeWidget(anywidget.AnyWidget):
             imports_serialized = {}
             if self._imports:
                 for import_name in self._imports.keys():
-                    # Just use the trait name as a placeholder - the actual widget instance
-                    # shouldn't affect caching since we only care about the interface
                     imports_serialized[import_name] = f"<imported_trait:{import_name}>"
             
             # Check cache first
@@ -546,6 +537,57 @@ TARGET ELEMENT:
 Find this element in the code and apply the requested change. The element should be identifiable by its tag, classes, text content, or SVG attributes. Modify ONLY this element or closely related code."""
 
 
+def _resolve_model(model: str | None, config: Config | None) -> str:
+    """Resolve model from config or default."""
+    if config and not model:
+        return config.model
+    if not model:
+        return get_global_config().model
+    return model
+
+
+def _load_data(data: pd.DataFrame | str | Path | None, max_rows: int = 5000) -> pd.DataFrame:
+    """Load and prepare data from various sources."""
+    if data is None:
+        return pd.DataFrame()
+    
+    if isinstance(data, pd.DataFrame):
+        df = data
+    else:
+        result = DataLoadTool().execute(data)
+        if not result.success:
+            raise ValueError(f"Failed to load data: {result.error}")
+        df = result.output.get("dataframe", pd.DataFrame())
+    
+    if len(df) > max_rows:
+        df = df.sample(max_rows)
+    
+    return df
+
+
+def _link_imports(widget: VibeWidget, imports: dict[str, Any] | None) -> None:
+    """Link imported traits to widget."""
+    if not imports:
+        return
+    
+    for import_name, import_source in imports.items():
+        if hasattr(import_source, "trait_names") and hasattr(import_source, import_name):
+            traitlets.link((import_source, import_name), (widget, import_name))
+        elif hasattr(import_source, "__self__"):
+            source_widget = import_source.__self__
+            if hasattr(source_widget, import_name):
+                traitlets.link((source_widget, import_name), (widget, import_name))
+
+
+def _display_widget(widget: VibeWidget) -> None:
+    """Display widget in IPython environment if available."""
+    try:
+        from IPython.display import display
+        display(widget)
+    except ImportError:
+        pass
+
+
 def create(
     description: str,
     data: pd.DataFrame | str | Path | None = None,
@@ -555,17 +597,16 @@ def create(
     imports: dict[str, Any] | None = None,
     config: Config | None = None,
 ) -> VibeWidget:
-    """
-    Create a VibeWidget visualization with automatic data processing.
+    """Create a VibeWidget visualization with automatic data processing.
     
     Args:
         description: Natural language description of the visualization
-        data: DataFrame to visualize OR path to data file (CSV, NetCDF, GeoJSON, etc.) OR URL OR None when using imports only
-        model: Model to use (any OpenRouter-supported model ID or shortcut). See vw.models() for available options
-        show_progress: Whether to show progress widget
-        exports: Dict of {trait_name: description} for traits this widget exposes
-        imports: Dict of {trait_name: source} where source is another widget's trait
-        config: Optional Config object with model settings (overrides model parameter)
+        data: DataFrame, file path, or URL to visualize
+        model: Model to use (see vw.models() for options)
+        show_progress: Whether to show progress
+        exports: Dict of {trait_name: description} for exposed state
+        imports: Dict of {trait_name: source} for consumed state
+        config: Optional Config object with model settings
     
     Returns:
         VibeWidget instance
@@ -573,35 +614,9 @@ def create(
     Examples:
         >>> widget = create("show temperature trends", df)
         >>> widget = create("visualize sales data", "sales.csv")
-        >>> widget = create("extract and visualize tables", "report.pdf")
-        >>> widget = create("visualize top stories", "https://news.ycombinator.com")
     """
-    if config:
-        if not model:
-            model = config.model
-    elif not model:
-        global_config = get_global_config()
-        if not model:
-            model = global_config.model
-    
-
-    if data is None:
-        df = pd.DataFrame()
-    elif isinstance(data, pd.DataFrame):
-        df = data
-    else:
-        # Use DataLoadTool to load any supported data source
-        result = DataLoadTool().execute(data)
-        print("Loading data...", result)
-        if result.success:
-            df = result.output.get("dataframe", pd.DataFrame())
-        else:
-            raise ValueError(f"Failed to load data: {result.error}")
-    
-    # TODO: better data wrangling and preprocessing
-    if len(df) > 5000:
-        df = df.sample(5000)
-        print("Note: Data truncated to 5000 rows for visualization.")
+    model = _resolve_model(model, config)
+    df = _load_data(data)
 
     widget = VibeWidget._create_with_dynamic_traits(
         description=description,
@@ -610,33 +625,50 @@ def create(
         show_progress=show_progress,
         exports=exports,
         imports=imports,
-        data_var_name=None,  # Set to None as it's not a parameter of create()
+        data_var_name=None,
     )
 
-    # Link imported traits
-    if imports:
-        for import_name, import_source in imports.items():
-            if hasattr(import_source, "trait_names") and hasattr(import_source, import_name):
-                try:
-                    traitlets.link((import_source, import_name), (widget, import_name))
-                except Exception as exc:
-                    print(f"Failed to link {import_name}: {exc}")
-            elif hasattr(import_source, "__self__"):
-                source_widget = import_source.__self__
-                if hasattr(source_widget, import_name):
-                    try:
-                        traitlets.link((source_widget, import_name), (widget, import_name))
-                    except Exception as exc:
-                        print(f"Failed to link {import_name}: {exc}")
-    
-    # Display widget
-    try:
-        from IPython.display import display
-        display(widget)
-    except ImportError:
-        pass
+    _link_imports(widget, imports)
+    _display_widget(widget)
     
     return widget
+
+
+def _resolve_source(
+    source: "VibeWidget | ComponentReference | str | Path",
+    store: WidgetStore
+) -> tuple[str, dict[str, Any] | None, list[str], pd.DataFrame | None]:
+    """Resolve source widget to code, metadata, components, and data."""
+    if isinstance(source, VibeWidget):
+        base_code = source.code
+        base_metadata = source._widget_metadata
+        base_components = base_metadata.get("components", []) if base_metadata else []
+        source_df = pd.DataFrame(source.data) if source.data else None
+        return base_code, base_metadata, base_components, source_df
+    
+    if isinstance(source, ComponentReference):
+        base_code = source.code
+        base_metadata = source.metadata
+        base_components = [source.component_name]
+        source_df = pd.DataFrame(source.widget.data) if source.widget.data else None
+        return base_code, base_metadata, base_components, source_df
+    
+    if isinstance(source, (str, Path)):
+        result = store.load_by_id(str(source)) if isinstance(source, str) else None
+        if not result and isinstance(source, str):
+            result = store.load_from_file(Path(source))
+        elif isinstance(source, Path):
+            result = store.load_from_file(source)
+        
+        if result:
+            base_metadata, base_code = result
+            base_components = base_metadata.get("components", [])
+            return base_code, base_metadata, base_components, None
+        
+        error_msg = f"Could not find widget with ID '{source}'" if isinstance(source, str) else f"Widget file not found: {source}"
+        raise ValueError(error_msg)
+    
+    raise TypeError(f"Invalid source type: {type(source)}")
 
 
 def revise(
@@ -649,21 +681,14 @@ def revise(
     imports: dict[str, Any] | None = None,
     config: Config | None = None,
 ) -> "VibeWidget":
-    """
-    Revise a widget by building upon existing widget code.
-    
-    This enables iterative refinement and composition:
-    - Start from an existing widget variable: revise("add tooltip", scatter)
-    - Reuse a component from a widget: revise("histogram", scatter.slider, data=df)
-    - Load from cache by ID: revise("improve", "abc123-v1")
-    - Load from file: revise("adapt", "path/to/widget.js", data=df)
+    """Revise a widget by building upon existing code.
     
     Args:
-        description: Natural language description of changes/additions
-        source: Widget variable, ComponentReference, widget ID, or file path
-        data: DataFrame to visualize (uses source widget's data if None)
+        description: Natural language description of changes
+        source: Widget, ComponentReference, widget ID, or file path
+        data: DataFrame to visualize (uses source data if None)
         model: Model to use (inherits from source if None)
-        show_progress: Whether to show progress widget
+        show_progress: Whether to show progress
         exports: Dict of {trait_name: description} for new/modified exports
         imports: Dict of {trait_name: source} for new/modified imports
         config: Optional Config object with model settings
@@ -672,109 +697,18 @@ def revise(
         New VibeWidget instance with revised code
     
     Examples:
-        >>> # Iterative refinement
         >>> scatter2 = revise("add hover tooltips", scatter)
-        >>> 
-        >>> # Component composition
         >>> hist = revise("histogram with slider", scatter.slider, data=df)
-        >>> 
-        >>> # Load from cache
-        >>> widget = revise("make it 3D", "abc123-v1", data=df)
-        >>> 
-        >>> # Load from file
-        >>> widget = revise("adapt for my data", "widgets/base.js", data=df)
     """
-    # Resolve config and model
-    if config:
-        if not model:
-            model = config.model
-    elif not model:
-        global_config = get_global_config()
-        model = global_config.model
-    
-    # Initialize store for loading
     store = WidgetStore()
+    base_code, base_metadata, base_components, source_df = _resolve_source(source, store)
     
-    # Resolve source to (base_code, base_metadata, base_components)
-    base_code: str
-    base_metadata: dict[str, Any] | None = None
-    base_components: list[str] = []
-    source_df: pd.DataFrame | None = None
-    
-    if isinstance(source, VibeWidget):
-        # Source is a widget instance
-        base_code = source.code
-        base_metadata = source._widget_metadata
-        base_components = base_metadata.get("components", []) if base_metadata else []
-        # Try to get data from source widget
-        source_data = source.data
-        if source_data:
-            source_df = pd.DataFrame(source_data)
-    
-    elif isinstance(source, ComponentReference):
-        # Source is a component reference - extract from parent widget
-        base_code = source.code
-        base_metadata = source.metadata
-        base_components = [source.component_name]  # Focus on this component
-        # Try to get data from source widget
-        source_data = source.widget.data
-        if source_data:
-            source_df = pd.DataFrame(source_data)
-    
-    elif isinstance(source, str):
-        # Source is either a widget ID or file path
-        # Try as widget ID first
-        result = store.load_by_id(source)
-        if result:
-            base_metadata, base_code = result
-            base_components = base_metadata.get("components", [])
-        else:
-            # Try as file path
-            result = store.load_from_file(Path(source))
-            if result:
-                base_metadata, base_code = result
-                base_components = base_metadata.get("components", [])
-            else:
-                raise ValueError(f"Could not find widget with ID '{source}' or file at '{source}'")
-    
-    elif isinstance(source, Path):
-        # Source is a file path
-        result = store.load_from_file(source)
-        if result:
-            base_metadata, base_code = result
-            base_components = base_metadata.get("components", [])
-        else:
-            raise FileNotFoundError(f"Widget file not found: {source}")
-    
-    else:
-        raise TypeError(f"Invalid source type: {type(source)}. Expected VibeWidget, ComponentReference, str, or Path")
-    
-    # Resolve data: use provided data, else source data, else empty
-    if data is None:
-        if source_df is not None:
-            df = source_df
-        else:
-            df = pd.DataFrame()
-    elif isinstance(data, pd.DataFrame):
-        df = data
-    else:
-        # Load data from file/URL
-        result = DataLoadTool().execute(data)
-        if result.success:
-            df = result.output.get("dataframe", pd.DataFrame())
-        else:
-            raise ValueError(f"Failed to load data: {result.error}")
-    
-    # Truncate if needed
-    if len(df) > 5000:
-        df = df.sample(5000)
-        print("Note: Data truncated to 5000 rows for visualization.")
-    
-    # Inherit model from base metadata if not specified
+    model = _resolve_model(model, config)
     if not model and base_metadata:
         model = base_metadata.get("model", "claude-haiku-4-5-20251001")
     
-    # Create widget with revision
+    df = source_df if data is None and source_df is not None else _load_data(data)
+    
     widget = VibeWidget._create_with_dynamic_traits(
         description=description,
         df=df,
@@ -788,27 +722,7 @@ def revise(
         base_widget_id=base_metadata.get("id") if base_metadata else None,
     )
     
-    # Link imported traits
-    if imports:
-        for import_name, import_source in imports.items():
-            if hasattr(import_source, "trait_names") and hasattr(import_source, import_name):
-                try:
-                    traitlets.link((import_source, import_name), (widget, import_name))
-                except Exception as exc:
-                    print(f"Failed to link {import_name}: {exc}")
-            elif hasattr(import_source, "__self__"):
-                source_widget = import_source.__self__
-                if hasattr(source_widget, import_name):
-                    try:
-                        traitlets.link((source_widget, import_name), (widget, import_name))
-                    except Exception as exc:
-                        print(f"Failed to link {import_name}: {exc}")
-    
-    # Display widget
-    try:
-        from IPython.display import display
-        display(widget)
-    except ImportError:
-        pass
+    _link_imports(widget, imports)
+    _display_widget(widget)
     
     return widget

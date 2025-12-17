@@ -1,13 +1,3 @@
-"""
-Agentic Orchestrator for widget generation.
-
-Design philosophy:
-- Accept DataFrame directly (data processing done upstream)
-- Use LLM providers for: code generation, validation, error repair
-- Always validate after generation, regenerate if needed
-- Keep prompts concise - agent responds with tool calls only
-"""
-
 from typing import Any, Callable, Tuple
 
 import pandas as pd
@@ -37,13 +27,6 @@ class AgenticOrchestrator:
         provider: LLMProvider,
         max_repair_attempts: int = 3,
     ):
-        """
-        Initialize orchestrator with an LLM provider.
-        
-        Args:
-            provider: LLM provider instance (Anthropic, Gemini, or OpenAI)
-            max_repair_attempts: Maximum number of repair attempts
-        """
         self.provider = provider
         self.max_repair_attempts = max_repair_attempts
 
@@ -256,7 +239,6 @@ class AgenticOrchestrator:
         data_info: dict[str, Any],
     ) -> str:
         """Repair code using provider with list of issues."""
-        # Build a simple error message from issues
         error_message = "Validation issues:\n" + "\n".join(f"- {issue}" for issue in issues)
         
         return self.provider.fix_code_error(

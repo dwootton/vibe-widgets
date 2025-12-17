@@ -92,15 +92,6 @@ class CodeValidateTool(Tool):
                     if f'model.on("change:{import_name}"' not in code and f"model.on('change:{import_name}'" not in code:
                         warnings.append(f"Import '{import_name}' not subscribed with model.on()")
 
-            # Check 6: Cleanup handlers
-            # useeffect_count = code.count("React.useEffect")
-            # return_cleanup_count = code.count("return () =>")
-            # if useeffect_count > 0 and return_cleanup_count < useeffect_count:
-            #     warnings.append(
-            #         f"Found {useeffect_count} useEffect but only {return_cleanup_count} cleanup handlers"
-            #     )
-
-            # Check 7: Common pitfalls
             if "document.body" in code:
                 issues.append("Direct document.body manipulation detected - use refs instead")
 
@@ -110,7 +101,6 @@ class CodeValidateTool(Tool):
             if "className=" in code and "html`" in code:
                 warnings.append("Use 'class=' not 'className=' in htm templates")
 
-            # Check 8: CDN imports versioning
             cdn_imports = re.findall(r'from\s+["\']https://esm\.sh/([^"\']+)["\']', code)
             for imp in cdn_imports:
                 if "@" not in imp:

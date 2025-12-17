@@ -57,25 +57,3 @@ def initial_import_value(import_name: str, import_source: Any) -> Any:
         return trait_value.value if hasattr(trait_value, 'value') else trait_value
     else:
         return import_source
-
-
-def serialize_imports_for_prompt(imports: dict[str, Any] | None) -> dict[str, str]:
-    """
-    Convert import sources to human-readable descriptions for the LLM prompt.
-    
-    Args:
-        imports: Dict of import name -> source widget/value
-        
-    Returns:
-        Dict of import name -> string description
-    """
-    if not imports:
-        return {}
-        
-    serialized: dict[str, str] = {}
-    for name, source in imports.items():
-        if hasattr(source, 'value'):
-            serialized[name] = f"{type(source.value).__name__}: {source.value}"
-        else:
-            serialized[name] = f"{type(source).__name__}: {source}"
-    return serialized
