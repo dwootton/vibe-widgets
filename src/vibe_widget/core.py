@@ -19,6 +19,34 @@ from vibe_widget.utils.widget_store import WidgetStore
 from vibe_widget.utils.util import clean_for_json, initial_import_value, serialize_imports_for_prompt
 
 
+class ComponentReference:
+    """Reference to a component within a widget for composition."""
+    
+    def __init__(self, widget: "VibeWidget", component_name: str):
+        """
+        Initialize component reference.
+        
+        Args:
+            widget: Source widget containing the component
+            component_name: Name of the component
+        """
+        self.widget = widget
+        self.component_name = component_name
+    
+    def __repr__(self) -> str:
+        return f"<ComponentReference: {self.component_name} from widget {self.widget._widget_metadata.get('slug', 'unknown') if self.widget._widget_metadata else 'unknown'}>"
+    
+    @property
+    def code(self) -> str:
+        """Get the full code of the source widget."""
+        return self.widget.code
+    
+    @property
+    def metadata(self) -> dict[str, Any]:
+        """Get the widget metadata."""
+        return self.widget._widget_metadata or {}
+
+
 class VibeWidget(anywidget.AnyWidget):
     data = traitlets.List([]).tag(sync=True)
     description = traitlets.Unicode("").tag(sync=True)
@@ -40,6 +68,9 @@ class VibeWidget(anywidget.AnyWidget):
         exports: dict[str, str] | None = None,
         imports: dict[str, Any] | None = None,
         data_var_name: str | None = None,
+        base_code: str | None = None,
+        base_components: list[str] | None = None,
+        base_widget_id: str | None = None,
         **kwargs,
     ) -> "VibeWidget":
         """Return a widget instance that includes traitlets for declared exports/imports."""
@@ -71,6 +102,9 @@ class VibeWidget(anywidget.AnyWidget):
             exports=exports,
             imports=imports,
             data_var_name=data_var_name,
+            base_code=base_code,
+            base_components=base_components,
+            base_widget_id=base_widget_id,
             **init_values,
             **kwargs,
         )
@@ -84,6 +118,9 @@ class VibeWidget(anywidget.AnyWidget):
         exports: dict[str, str] | None = None,
         imports: dict[str, Any] | None = None,
         data_var_name: str | None = None,
+        base_code: str | None = None,
+        base_components: list[str] | None = None,
+        base_widget_id: str | None = None,
         **kwargs
     ):
         """
@@ -97,12 +134,18 @@ class VibeWidget(anywidget.AnyWidget):
             exports: Dict of trait_name -> description for state this widget exposes
             imports: Dict of trait_name -> source widget/value for state this widget consumes
             data_var_name: Variable name of the data parameter for cache key
+            base_code: Optional base widget code for revision/composition
+            base_components: Optional list of component names from base widget
+            base_widget_id: Optional ID of base widget for provenance tracking
             **kwargs: Additional widget parameters
         """
         parser = CodeStreamParser()
         self._exports = exports or {}
         self._imports = imports or {}
         self._widget_metadata = None
+        self._base_code = base_code
+        self._base_components = base_components or []
+        self._base_widget_id = base_widget_id
         
         app_wrapper_path = Path(__file__).parent / "app_wrapper.js"
         self._esm = app_wrapper_path.read_text()
@@ -233,6 +276,8 @@ class VibeWidget(anywidget.AnyWidget):
                 df=df,
                 exports=self._exports,
                 imports=imports_serialized,
+                base_code=self._base_code,
+                base_components=self._base_components,
                 progress_callback=stream_callback if show_progress else None,
             )
             
@@ -252,6 +297,16 @@ class VibeWidget(anywidget.AnyWidget):
                 imports_serialized=imports_serialized,
                 notebook_path=notebook_path,
             )
+            
+            # Update widget_entry with base_widget_id if this is a revision
+            if self._base_widget_id:
+                widget_entry["base_widget_id"] = self._base_widget_id
+                # Update in index
+                for entry in store.index["widgets"]:
+                    if entry["id"] == widget_entry["id"]:
+                        entry["base_widget_id"] = self._base_widget_id
+                        break
+                store._save_index()
             
             self.logs = self.logs + [f"Widget saved: {widget_entry['slug']} v{widget_entry['version']}"]
             self.logs = self.logs + [f"Location: .vibewidget/widgets/{widget_entry['file_name']}"]
@@ -299,6 +354,51 @@ class VibeWidget(anywidget.AnyWidget):
             self.status = "error"
             self.logs = self.logs + [f"Fix attempt failed: {str(e)}"]
             self.error_message = ""
+    
+    def __dir__(self):
+        """Return list of attributes including component names for autocomplete."""
+        # Get default attributes
+        default_attrs = object.__dir__(self)
+        
+        # Add component names if widget has been generated
+        if hasattr(self, '_widget_metadata') and self._widget_metadata and "components" in self._widget_metadata:
+            components = self._widget_metadata["components"]
+            # Convert to lowercase for pythonic access (e.g., ColorLegend -> color_legend)
+            component_attrs = [self._to_python_attr(comp) for comp in components]
+            return list(set(default_attrs + component_attrs))
+        
+        return default_attrs
+    
+    def __getattr__(self, name: str):
+        """
+        Enable access to components via dot notation.
+        
+        Examples:
+            scatter.slider -> ComponentReference
+            scatter.color_legend -> ComponentReference
+        """
+        # Avoid infinite recursion for special attributes
+        if name.startswith('_'):
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+        
+        # Check if this is a component access
+        if hasattr(self, '_widget_metadata') and self._widget_metadata and "components" in self._widget_metadata:
+            components = self._widget_metadata["components"]
+            
+            # Try to find matching component (handle both PascalCase and snake_case)
+            for comp in components:
+                if self._to_python_attr(comp) == name or comp.lower() == name.lower():
+                    return ComponentReference(self, comp)
+        
+        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+    
+    @staticmethod
+    def _to_python_attr(component_name: str) -> str:
+        """Convert PascalCase component name to snake_case attribute."""
+        # Insert underscore before uppercase letters and convert to lowercase
+        import re
+        s1 = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', component_name)
+        return re.sub('([a-z0-9])([A-Z])', r'\1_\2', s1).lower()
 
     def _on_grab_edit(self, change):
         """Handle element edit requests from frontend (React Grab)."""
@@ -513,6 +613,181 @@ def create(
         data_var_name=None,  # Set to None as it's not a parameter of create()
     )
 
+    # Link imported traits
+    if imports:
+        for import_name, import_source in imports.items():
+            if hasattr(import_source, "trait_names") and hasattr(import_source, import_name):
+                try:
+                    traitlets.link((import_source, import_name), (widget, import_name))
+                except Exception as exc:
+                    print(f"Failed to link {import_name}: {exc}")
+            elif hasattr(import_source, "__self__"):
+                source_widget = import_source.__self__
+                if hasattr(source_widget, import_name):
+                    try:
+                        traitlets.link((source_widget, import_name), (widget, import_name))
+                    except Exception as exc:
+                        print(f"Failed to link {import_name}: {exc}")
+    
+    # Display widget
+    try:
+        from IPython.display import display
+        display(widget)
+    except ImportError:
+        pass
+    
+    return widget
+
+
+def revise(
+    description: str,
+    source: "VibeWidget | ComponentReference | str | Path",
+    data: pd.DataFrame | str | Path | None = None,
+    model: str | None = None,
+    show_progress: bool = True,
+    exports: dict[str, str] | None = None,
+    imports: dict[str, Any] | None = None,
+    config: Config | None = None,
+) -> "VibeWidget":
+    """
+    Revise a widget by building upon existing widget code.
+    
+    This enables iterative refinement and composition:
+    - Start from an existing widget variable: revise("add tooltip", scatter)
+    - Reuse a component from a widget: revise("histogram", scatter.slider, data=df)
+    - Load from cache by ID: revise("improve", "abc123-v1")
+    - Load from file: revise("adapt", "path/to/widget.js", data=df)
+    
+    Args:
+        description: Natural language description of changes/additions
+        source: Widget variable, ComponentReference, widget ID, or file path
+        data: DataFrame to visualize (uses source widget's data if None)
+        model: Model to use (inherits from source if None)
+        show_progress: Whether to show progress widget
+        exports: Dict of {trait_name: description} for new/modified exports
+        imports: Dict of {trait_name: source} for new/modified imports
+        config: Optional Config object with model settings
+    
+    Returns:
+        New VibeWidget instance with revised code
+    
+    Examples:
+        >>> # Iterative refinement
+        >>> scatter2 = revise("add hover tooltips", scatter)
+        >>> 
+        >>> # Component composition
+        >>> hist = revise("histogram with slider", scatter.slider, data=df)
+        >>> 
+        >>> # Load from cache
+        >>> widget = revise("make it 3D", "abc123-v1", data=df)
+        >>> 
+        >>> # Load from file
+        >>> widget = revise("adapt for my data", "widgets/base.js", data=df)
+    """
+    # Resolve config and model
+    if config:
+        if not model:
+            model = config.model
+    elif not model:
+        global_config = get_global_config()
+        model = global_config.model
+    
+    # Initialize store for loading
+    store = WidgetStore()
+    
+    # Resolve source to (base_code, base_metadata, base_components)
+    base_code: str
+    base_metadata: dict[str, Any] | None = None
+    base_components: list[str] = []
+    source_df: pd.DataFrame | None = None
+    
+    if isinstance(source, VibeWidget):
+        # Source is a widget instance
+        base_code = source.code
+        base_metadata = source._widget_metadata
+        base_components = base_metadata.get("components", []) if base_metadata else []
+        # Try to get data from source widget
+        source_data = source.data
+        if source_data:
+            source_df = pd.DataFrame(source_data)
+    
+    elif isinstance(source, ComponentReference):
+        # Source is a component reference - extract from parent widget
+        base_code = source.code
+        base_metadata = source.metadata
+        base_components = [source.component_name]  # Focus on this component
+        # Try to get data from source widget
+        source_data = source.widget.data
+        if source_data:
+            source_df = pd.DataFrame(source_data)
+    
+    elif isinstance(source, str):
+        # Source is either a widget ID or file path
+        # Try as widget ID first
+        result = store.load_by_id(source)
+        if result:
+            base_metadata, base_code = result
+            base_components = base_metadata.get("components", [])
+        else:
+            # Try as file path
+            result = store.load_from_file(Path(source))
+            if result:
+                base_metadata, base_code = result
+                base_components = base_metadata.get("components", [])
+            else:
+                raise ValueError(f"Could not find widget with ID '{source}' or file at '{source}'")
+    
+    elif isinstance(source, Path):
+        # Source is a file path
+        result = store.load_from_file(source)
+        if result:
+            base_metadata, base_code = result
+            base_components = base_metadata.get("components", [])
+        else:
+            raise FileNotFoundError(f"Widget file not found: {source}")
+    
+    else:
+        raise TypeError(f"Invalid source type: {type(source)}. Expected VibeWidget, ComponentReference, str, or Path")
+    
+    # Resolve data: use provided data, else source data, else empty
+    if data is None:
+        if source_df is not None:
+            df = source_df
+        else:
+            df = pd.DataFrame()
+    elif isinstance(data, pd.DataFrame):
+        df = data
+    else:
+        # Load data from file/URL
+        result = DataLoadTool().execute(data)
+        if result.success:
+            df = result.output.get("dataframe", pd.DataFrame())
+        else:
+            raise ValueError(f"Failed to load data: {result.error}")
+    
+    # Truncate if needed
+    if len(df) > 5000:
+        df = df.sample(5000)
+        print("Note: Data truncated to 5000 rows for visualization.")
+    
+    # Inherit model from base metadata if not specified
+    if not model and base_metadata:
+        model = base_metadata.get("model", "claude-haiku-4-5-20251001")
+    
+    # Create widget with revision
+    widget = VibeWidget._create_with_dynamic_traits(
+        description=description,
+        df=df,
+        model=model,
+        show_progress=show_progress,
+        exports=exports,
+        imports=imports,
+        data_var_name=None,
+        base_code=base_code,
+        base_components=base_components,
+        base_widget_id=base_metadata.get("id") if base_metadata else None,
+    )
+    
     # Link imported traits
     if imports:
         for import_name, import_source in imports.items():

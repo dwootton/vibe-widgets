@@ -64,6 +64,8 @@ class AgenticOrchestrator:
         df: pd.DataFrame,
         exports: dict[str, str] | None = None,
         imports: dict[str, str] | None = None,
+        base_code: str | None = None,
+        base_components: list[str] | None = None,
         progress_callback: Callable[[str, str], None] | None = None,
     ) -> Tuple[str, pd.DataFrame]:
         """
@@ -74,6 +76,8 @@ class AgenticOrchestrator:
             df: DataFrame to visualize
             exports: Dict of export trait names -> descriptions
             imports: Dict of import trait names -> descriptions
+            base_code: Optional base widget code for composition/revision
+            base_components: Optional list of component names from base widget
             progress_callback: Optional callback for progress updates
         
         Returns:
@@ -81,6 +85,7 @@ class AgenticOrchestrator:
         """
         exports = exports or {}
         imports = imports or {}
+        base_components = base_components or []
         
         self._emit(progress_callback, "step", "Analyzing data")
         
@@ -89,13 +94,25 @@ class AgenticOrchestrator:
         
         self._emit(progress_callback, "step", f"Data: {df.shape[0]} rows × {df.shape[1]} columns")
         
-        # Generate code with LLM provider
-        self._emit(progress_callback, "step", "Generating widget code")
-        code = self.provider.generate_widget_code(
-            description=description,
-            data_info=data_info,
-            progress_callback=lambda msg: self._emit(progress_callback, "chunk", msg),
-        )
+        # Determine if this is a revision or fresh generation
+        if base_code:
+            self._emit(progress_callback, "step", "Revising widget based on base code...")
+            code = self.provider.revise_widget_code(
+                current_code=base_code,
+                revision_description=description,
+                data_info=data_info,
+                base_code=None,  # Already in current_code
+                base_components=base_components,
+                progress_callback=lambda msg: self._emit(progress_callback, "chunk", msg),
+            )
+        else:
+            # Generate code with LLM provider
+            self._emit(progress_callback, "step", "Generating widget code...")
+            code = self.provider.generate_widget_code(
+                description=description,
+                data_info=data_info,
+                progress_callback=lambda msg: self._emit(progress_callback, "chunk", msg),
+            )
         
         # Validate code
         self._emit(progress_callback, "step", "Validating code")
@@ -123,7 +140,11 @@ class AgenticOrchestrator:
                 break
             
             repair_attempts += 1
-            self._emit(progress_callback, "step", f"Repairing code (attempt {repair_attempts})")
+            self._emit(progress_callback, "step", f"Repairing code (attempt {repair_attempts})...")
+            # print out all issues
+            for issue in issues:
+                self._emit(progress_callback, "chunk", f"Issue: {issue}")
+                print(f"Issue: {issue}")
             
             # Use provider's fix_code_error for first issue if it's a clear error
             if len(issues) == 1 and ("error" in issues[0].lower() or "exception" in issues[0].lower()):

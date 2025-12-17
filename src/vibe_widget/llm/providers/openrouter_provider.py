@@ -81,10 +81,19 @@ class OpenRouterProvider(LLMProvider):
         current_code: str,
         revision_description: str,
         data_info: dict[str, Any],
+        base_code: str | None = None,
+        base_components: list[str] | None = None,
         progress_callback: Callable[[str], None] | None = None,
     ) -> str:
         """Revise existing widget code."""
-        prompt = self._build_revision_prompt(current_code, revision_description, data_info)
+        prompt = self._build_revision_prompt(
+            current_code,
+            revision_description,
+            data_info,
+            base_code=base_code,
+            base_components=base_components,
+        )
+        
         completion_params = {
             "model": self.model,
             "messages": [{"role": "user", "content": prompt}],

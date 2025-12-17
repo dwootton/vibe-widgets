@@ -33,6 +33,8 @@ class LLMProvider(ABC):
         current_code: str,
         revision_description: str,
         data_info: dict[str, Any],
+        base_code: str | None = None,
+        base_components: list[str] | None = None,
         progress_callback: Callable[[str], None] | None = None,
     ) -> str:
         """Revise existing widget code based on a revision description.
@@ -41,6 +43,8 @@ class LLMProvider(ABC):
             current_code: The current widget code
             revision_description: Description of what to change
             data_info: Dictionary containing data profile information
+            base_code: Optional additional base widget code for composition
+            base_components: Optional list of component names from base widget
             progress_callback: Optional callback for streaming progress updates
             
         Returns:
@@ -67,8 +71,21 @@ class LLMProvider(ABC):
         """
         pass
     
-    def _build_prompt(self, description: str, data_info: dict[str, Any]) -> str:
-        """Build the prompt for code generation."""
+    def _build_prompt(
+        self,
+        description: str,
+        data_info: dict[str, Any],
+        base_code: str | None = None,
+        base_components: list[str] | None = None,
+    ) -> str:
+        """Build the prompt for code generation.
+        
+        Args:
+            description: Widget description
+            data_info: Data information dictionary
+            base_code: Optional base widget code for composition
+            base_components: Optional list of component names available from base
+        """
         columns = data_info.get("columns", [])
         dtypes = data_info.get("dtypes", {})
         sample_data = data_info.get("sample", {})
@@ -76,6 +93,11 @@ class LLMProvider(ABC):
         imports = data_info.get("imports", {})
         
         exports_imports_section = self._build_exports_imports_section(exports, imports)
+        
+        # Build composition section if base code provided
+        composition_section = ""
+        if base_code:
+            composition_section = self._build_composition_section(base_code, base_components or [])
         
         # Convert columns to strings to handle integer or other non-string column names
         columns_str = ', '.join(str(col) for col in columns) if columns else 'No data (widget uses imports only)'
@@ -89,7 +111,7 @@ Data schema:
 - Types: {dtypes}
 - Sample data: {sample_data}
 
-{exports_imports_section}
+{composition_section}{exports_imports_section}
 
 CRITICAL REACT + HTM SPECIFICATION:
 
@@ -143,6 +165,28 @@ Key Syntax Rules:
 - Style objects: style=${{{{ padding: '20px' }}}}
 - Conditionals: ${{condition && html`...`}}
 
+MODULARITY & COMPOSITION:
+
+For reusable UI components (sliders, legends, tooltips, controls), export them as named exports:
+```javascript
+export const Slider = ({{ value, onChange, min, max }}) => {{
+  return html`<input type="range" value=${{value}} onInput=${{onChange}} min=${{min}} max=${{max}} />`;
+}};
+
+export const ColorLegend = ({{ colors, labels }}) => {{
+  return html`<div class="legend">${{labels.map((label, i) => html`<span>...</span>`)}}</div>`;
+}};
+
+export default function Widget({{ model, html, React }}) {{
+  // Use: html`<${{Slider}} value=${{v}} ... />`
+}}
+```
+
+BENEFITS:
+- Components can be imported and reused in other widgets
+- Cleaner code structure and separation of concerns
+- Easier testing and maintenance
+
 OUTPUT REQUIREMENTS:
 
 Generate ONLY the working JavaScript code (imports → export default function Widget...).
@@ -157,8 +201,18 @@ Begin the response with code immediately."""
         current_code: str,
         revision_description: str,
         data_info: dict[str, Any],
+        base_code: str | None = None,
+        base_components: list[str] | None = None,
     ) -> str:
-        """Build the prompt for code revision."""
+        """Build the prompt for code revision.
+        
+        Args:
+            current_code: Current widget code
+            revision_description: Description of changes to make
+            data_info: Data information dictionary
+            base_code: Optional additional base widget code for composition
+            base_components: Optional list of components from base widget
+        """
         columns = data_info.get("columns", [])
         dtypes = data_info.get("dtypes", {})
         sample_data = data_info.get("sample", {})
@@ -166,6 +220,11 @@ Begin the response with code immediately."""
         imports = data_info.get("imports", {})
         
         exports_imports_section = self._build_exports_imports_section(exports, imports)
+        
+        # Build composition section if additional base code provided
+        composition_section = ""
+        if base_code:
+            composition_section = self._build_composition_section(base_code, base_components or [])
         
         return f"""Revise the following AnyWidget React bundle code according to the request.
 
@@ -176,7 +235,7 @@ CURRENT CODE:
 {current_code}
 ```
 
-Data schema:
+{composition_section}Data schema:
 - Columns: {', '.join(columns) if columns else 'No data (widget uses imports only)'}
 - Types: {dtypes}
 - Sample data: {sample_data}
@@ -188,6 +247,9 @@ Follow the SAME constraints as generation:
 - html tagged templates only (no JSX)
 - ESM CDN imports with locked versions
 - Thorough cleanup in every React.useEffect
+- Export reusable components as named exports when appropriate
+
+Focus on making ONLY the requested changes. Reuse existing code structure where possible.
 
 Return only the full revised JavaScript code. No markdown fences or explanations."""
     
@@ -257,6 +319,35 @@ IMPORTS (State from other widgets):
 CRITICAL: Subscribe with model.on("change:trait", handler), unsubscribe in cleanup""")
         
         return "\n".join(sections)
+    
+    def _build_composition_section(self, base_code: str, base_components: list[str]) -> str:
+        """
+        Build composition section showing available base widget code and components.
+        
+        Args:
+            base_code: The base widget JavaScript code
+            base_components: List of component names exported from base
+        
+        Returns:
+            Formatted composition section for prompt
+        """
+        section = f"""
+BASE WIDGET CODE (for reference and reuse):
+```javascript
+{base_code}
+```
+"""
+        
+        if base_components:
+            components_list = ", ".join(base_components)
+            section += f"""
+AVAILABLE COMPONENTS from base widget: {components_list}
+
+You can reuse these components in your widget. Extract and adapt them as needed.
+Focus on modifying only what's necessary for the requested changes.
+"""
+        
+        return section + "\n"
     
     def clean_code(self, code: str) -> str:
         """Clean the generated code by removing markdown fences."""
