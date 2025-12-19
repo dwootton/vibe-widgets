@@ -194,18 +194,17 @@ Create dashboards where widgets communicate:
 scatter = vw.create(
     "scatter plot with brush selection tool",
     df,
-    exports={"selected": "indices of selected points"}
+    vw.exports(selected_indices=vw.export("indices of selected points"))
 )
 
 # Widget 2: Histogram that reacts to selection
 histogram = vw.create(
     "histogram with highlighted bars for selected data",
-    df,
-    imports={"selected": scatter}
+    vw.imports(df, selected_indices=scatter.selected_indices),
 )
 ```
 
-When you select points in the scatter plot, the histogram automatically highlights corresponding data.
+Each export is exposed as a callable handle (e.g., `scatter.selected_indices()`) that can be passed into `vw.imports` for other widgets. When you select points in the scatter plot, the histogram automatically highlights corresponding data.
 
 ### Iterative Refinement
 
@@ -255,12 +254,12 @@ widget = vw.create(
   - `None`: For widgets driven purely by imports
 
 - `exports`: State this widget shares with others
-  - Format: `{"trait_name": "description of what this represents"}`
-  - Example: `{"selected": "indices of selected data points"}`
+  - Use `vw.exports(selected_indices=vw.export("indices of selected data points"))`
+  - Positional shorthand works too: `vw.create("...", df, vw.exports(...))`
 
 - `imports`: State this widget receives from others
-  - Format: `{"trait_name": source_widget or source_widget.trait}`
-  - Example: `{"selected": scatter_widget}`
+  - Use `vw.imports(df, selected_indices=scatter.selected_indices)` to bundle data with imports
+  - You can still pass a plain dict for legacy `imports={"selected": scatter_widget}` usage
 
 ### `revise()`
 

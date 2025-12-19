@@ -5,11 +5,13 @@ Clean, robust widget generation without legacy profile logic.
 from pathlib import Path
 from typing import Any
 import warnings
+import inspect
 
 import anywidget
 import pandas as pd
 import traitlets
 
+from vibe_widget.api import ExportBundle, ExportHandle, ImportsBundle
 from vibe_widget.utils.code_parser import CodeStreamParser, RevisionStreamParser
 from vibe_widget.llm.agentic import AgenticOrchestrator
 from vibe_widget.llm.providers.base import LLMProvider
@@ -25,6 +27,26 @@ from vibe_widget.llm.providers.openrouter_provider import OpenRouterProvider
 
 from vibe_widget.utils.widget_store import WidgetStore
 from vibe_widget.utils.util import clean_for_json, initial_import_value, load_data
+
+
+def _export_to_json_value(value: Any, widget: Any) -> Any:
+    """Trait serialization helper to unwrap export handles."""
+    if isinstance(value, ExportHandle) or getattr(value, "__vibe_export__", False):
+        try:
+            return value()
+        except Exception:
+            return None
+    return value
+
+
+def _import_to_json_value(value: Any, widget: Any) -> Any:
+    """Trait serialization helper for imports."""
+    if isinstance(value, ExportHandle) or getattr(value, "__vibe_export__", False):
+        try:
+            return value()
+        except Exception:
+            return None
+    return value
 
 
 class ComponentReference:
@@ -59,6 +81,16 @@ class VibeWidget(anywidget.AnyWidget):
     grab_edit_request = traitlets.Dict({}).tag(sync=True)
     edit_in_progress = traitlets.Bool(False).tag(sync=True)
 
+    @staticmethod
+    def _trait_to_json(x, self):
+        """Ensure export handles serialize to their underlying value."""
+        if isinstance(x, ExportHandle) or getattr(x, "__vibe_export__", False):
+            try:
+                return x()
+            except Exception:
+                return None
+        return x
+
     @classmethod
     def _create_with_dynamic_traits(
         cls,
@@ -77,10 +109,10 @@ class VibeWidget(anywidget.AnyWidget):
 
         dynamic_traits: dict[str, traitlets.TraitType] = {}
         for export_name in exports.keys():
-            dynamic_traits[export_name] = traitlets.Any(default_value=None).tag(sync=True)
+            dynamic_traits[export_name] = traitlets.Any(default_value=None).tag(sync=True, to_json=_export_to_json_value)
         for import_name in imports.keys():
             if import_name not in dynamic_traits:
-                dynamic_traits[import_name] = traitlets.Any(default_value=None).tag(sync=True)
+                dynamic_traits[import_name] = traitlets.Any(default_value=None).tag(sync=True, to_json=_import_to_json_value)
 
         widget_class = (
             type("DynamicVibeWidget", (cls,), dynamic_traits) if dynamic_traits else cls
@@ -137,6 +169,7 @@ class VibeWidget(anywidget.AnyWidget):
         parser = CodeStreamParser()
         self._exports = exports or {}
         self._imports = imports or {}
+        self._export_accessors: dict[str, ExportHandle] = {}
         self._widget_metadata = None
         self._base_code = base_code
         self._base_components = base_components or []
@@ -315,6 +348,25 @@ class VibeWidget(anywidget.AnyWidget):
             self.status = "error"
             self.logs = self.logs + [f"Error: {str(e)}"]
             raise
+
+    def __getattribute__(self, name: str):
+        """Return callable handles for exports to support import chaining."""
+        if not name.startswith("_"):
+            try:
+                exports = object.__getattribute__(self, "_exports")
+                if name in exports:
+                    # Avoid wrapping when traitlets is serializing state
+                    for frame in inspect.stack()[1:4]:
+                        if frame.function in {"get_state", "_trait_to_json", "_should_send_property"} or "traitlets" in frame.filename:
+                            return super().__getattribute__(name)
+                    accessors = object.__getattribute__(self, "_export_accessors")
+                    if name not in accessors:
+                        accessors[name] = ExportHandle(self, name)
+                    return accessors[name]
+            except Exception:
+                # Fall back to default lookup for early init or missing attrs
+                pass
+        return super().__getattribute__(name)
     
     def _on_error(self, change):
         """Called when frontend reports a runtime error."""
@@ -352,15 +404,19 @@ class VibeWidget(anywidget.AnyWidget):
         """Return list of attributes including component names for autocomplete."""
         # Get default attributes
         default_attrs = object.__dir__(self)
+        export_attrs: list[str] = []
+        
+        if hasattr(self, "_exports") and self._exports:
+            export_attrs = list(self._exports.keys())
         
         # Add component names if widget has been generated
         if hasattr(self, '_widget_metadata') and self._widget_metadata and "components" in self._widget_metadata:
             components = self._widget_metadata["components"]
             # Convert to lowercase for pythonic access (e.g., ColorLegend -> color_legend)
             component_attrs = [self._to_python_attr(comp) for comp in components]
-            return list(set(default_attrs + component_attrs))
+            return list(set(default_attrs + component_attrs + export_attrs))
         
-        return default_attrs
+        return list(set(default_attrs + export_attrs))
     
     def __getattr__(self, name: str):
         """
@@ -384,6 +440,10 @@ class VibeWidget(anywidget.AnyWidget):
                     return ComponentReference(self, comp)
         
         raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+
+    def _get_export_value(self, export_name: str) -> Any:
+        """Return the live value of an export (used by ExportHandle)."""
+        return super().__getattribute__(export_name)
     
     @staticmethod
     def _to_python_attr(component_name: str) -> str:
@@ -539,18 +599,43 @@ TARGET ELEMENT:
 Find this element in the code and apply the requested change. The element should be identifiable by its tag, classes, text content, or SVG attributes. Modify ONLY this element or closely related code."""
 
 
+def _resolve_import_source(import_name: str, import_source: Any) -> tuple[Any | None, str | None]:
+    """Resolve a provided import source into a widget + trait name."""
+    if isinstance(import_source, ExportHandle):
+        return import_source.widget, import_source.name
+    
+    if hasattr(import_source, "trait_names") and hasattr(import_source, import_name):
+        return import_source, import_name
+    
+    if hasattr(import_source, "__self__"):
+        source_widget = import_source.__self__
+        if hasattr(source_widget, import_name):
+            return source_widget, import_name
+    
+    return None, None
+
+
 def _link_imports(widget: VibeWidget, imports: dict[str, Any] | None) -> None:
     """Link imported traits to widget."""
     if not imports:
         return
     
     for import_name, import_source in imports.items():
-        if hasattr(import_source, "trait_names") and hasattr(import_source, import_name):
-            traitlets.link((import_source, import_name), (widget, import_name))
-        elif hasattr(import_source, "__self__"):
-            source_widget = import_source.__self__
-            if hasattr(source_widget, import_name):
-                traitlets.link((source_widget, import_name), (widget, import_name))
+        source_widget, source_trait = _resolve_import_source(import_name, import_source)
+        if source_widget and source_trait:
+            if isinstance(source_widget, VibeWidget) and source_trait in getattr(source_widget, "_exports", {}):
+                try:
+                    initial_value = source_widget._get_export_value(source_trait)
+                    setattr(widget, import_name, initial_value)
+                except AttributeError:
+                    pass
+
+                def _propagate(change, target_widget=widget, target_trait=import_name):
+                    target_widget.set_trait(target_trait, change.new)
+
+                source_widget.observe(_propagate, names=source_trait)
+            else:
+                traitlets.link((source_widget, source_trait), (widget, import_name))
 
 
 def _display_widget(widget: VibeWidget) -> None:
@@ -582,6 +667,47 @@ def _resolve_model(
     return resolved_model, config
 
 
+def _normalize_api_inputs(
+    data: Any,
+    show_progress: bool | ExportBundle | ImportsBundle,
+    exports: dict[str, str] | ExportBundle | None,
+    imports: dict[str, Any] | ImportsBundle | None,
+) -> tuple[Any, bool, dict[str, str] | None, dict[str, Any] | None]:
+    """Allow flexible ordering/wrapping for exports/imports/data."""
+    normalized_data = data
+    normalized_imports = imports
+    normalized_exports = exports
+    normalized_show_progress = show_progress
+
+    # Data can be passed as an ImportsBundle to keep everything together
+    if isinstance(normalized_data, ImportsBundle):
+        normalized_imports = {**(normalized_data.imports or {}), **(normalized_imports or {})}
+        normalized_data = normalized_data.data
+
+    # Third positional argument may now be exports (new API) or legacy exports dict
+    if isinstance(normalized_show_progress, ExportBundle):
+        normalized_exports = normalized_show_progress.exports
+        normalized_show_progress = True
+    elif isinstance(normalized_show_progress, dict) and normalized_exports is None:
+        normalized_exports = normalized_show_progress
+        normalized_show_progress = True
+    elif isinstance(normalized_show_progress, ImportsBundle):
+        normalized_imports = {**(normalized_show_progress.imports or {}), **(normalized_imports or {})}
+        if normalized_data is None:
+            normalized_data = normalized_show_progress.data
+        normalized_show_progress = True
+
+    if isinstance(normalized_exports, ExportBundle):
+        normalized_exports = normalized_exports.exports
+
+    if isinstance(normalized_imports, ImportsBundle):
+        if normalized_data is None:
+            normalized_data = normalized_imports.data
+        normalized_imports = normalized_imports.imports
+
+    return normalized_data, bool(normalized_show_progress), normalized_exports, normalized_imports
+
+
 def create(
     description: str,
     data: pd.DataFrame | str | Path | None = None,
@@ -607,6 +733,12 @@ def create(
         >>> widget = create("show temperature trends", df)
         >>> widget = create("visualize sales data", "sales.csv")
     """
+    data, show_progress, exports, imports = _normalize_api_inputs(
+        data=data,
+        show_progress=show_progress,
+        exports=exports,
+        imports=imports,
+    )
     model, _ = _resolve_model(config_override=config)
     df = load_data(data)
 
@@ -705,6 +837,12 @@ def revise(
         >>> scatter2 = revise("add hover tooltips", scatter)
         >>> hist = revise("histogram with slider", scatter.slider, data=df)
     """
+    data, show_progress, exports, imports = _normalize_api_inputs(
+        data=data,
+        show_progress=show_progress,
+        exports=exports,
+        imports=imports,
+    )
     store = WidgetStore()
     source_info = _resolve_source(source, store)
     model, _ = _resolve_model(config_override=config)
