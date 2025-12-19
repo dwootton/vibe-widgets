@@ -1,12 +1,26 @@
 # Developer Setup Guide
 
-## Install
+## Install (JS deps)
 
 ```bash
 npm install
 ```
 
-Installs build tooling (**esbuild**) and editor deps (**CodeMirror** + extensions).
+Installs **esbuild** (bundler) and **CodeMirror** (+ extensions).
+
+## Install the Python package (local)
+
+From the repo root (with `pyproject.toml`):
+
+```bash
+python -m pip install -e .
+```
+
+Now imports resolve to your working tree:
+
+```python
+import vibe_widget
+```
 
 ## Build the widget bundle
 
@@ -36,10 +50,10 @@ w = vw.create("test widget", df)
 w
 ```
 
-Notes:
+### After JS changes
 
-* After JS changes, **restart the kernel** (the bundle is cached).
-* In watch mode, refresh/re-run the cell to pick up the rebuilt bundle.
+1. Rebuild (`build-app-wrapper` or watch)
+2. **Restart the Jupyter kernel** (the bundle is cached)
 
 ## How anywidget loads the bundle
 
@@ -52,5 +66,6 @@ class VibeWidget(anywidget.AnyWidget):
 
 ## Troubleshooting
 
-* **Bundle not updating:** restart kernel; verify `AppWrapper.bundle.js` is being rebuilt.
-* **Import errors:** ensure deps are installed and esbuild output has no unresolved imports.
+* **Import not found:** you didn’t run `pip install -e .` from repo root, or you’re in a different env.
+* **Wrong env:** verify `python -m pip -V` points to the same Python you use in Jupyter.
+* **Bundle not updating:** rebuild succeeded but you didn’t restart the kernel.
