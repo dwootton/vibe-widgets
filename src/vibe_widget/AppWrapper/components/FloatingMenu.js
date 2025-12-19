@@ -113,7 +113,7 @@ export default function FloatingMenu({
       ${isOpen && html`
         <div class="menu-options">
           <div class="menu-option" onClick=${onGrabModeStart}>Edit Element</div>
-          <div class="menu-option" onClick=${onViewSource}>View Source</div>
+          <div class="menu-option" onClick=${onViewSource}>Edit Code</div>
           <div class="menu-option disabled">Export (Coming Soon)</div>
         </div>
       `}
