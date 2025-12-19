@@ -7,6 +7,7 @@ from typing import Any
 import pandas as pd
 import numpy as np
 from vibe_widget.llm.tools.data_tools import DataLoadTool
+from vibe_widget.api import ExportHandle
 from vibe_widget.config import Config, get_global_config
 
 
@@ -21,6 +22,11 @@ def clean_for_json(obj: Any) -> Any:
     Returns:
         JSON-serializable version of the object
     """
+    if isinstance(obj, ExportHandle) or getattr(obj, "__vibe_export__", False):
+        try:
+            return obj()
+        except Exception:
+            return str(obj)
     if isinstance(obj, dict):
         return {k: clean_for_json(v) for k, v in obj.items()}
     elif isinstance(obj, list):
@@ -39,7 +45,8 @@ def clean_for_json(obj: Any) -> Any:
         except (ValueError, AttributeError):
             return str(obj)
     else:
-        return obj
+        # Fallback: best-effort string conversion to keep serialization robust
+        return obj if isinstance(obj, (str, int, float, bool, type(None))) else str(obj)
 
 
 def initial_import_value(import_name: str, import_source: Any) -> Any:
@@ -53,6 +60,8 @@ def initial_import_value(import_name: str, import_source: Any) -> Any:
     Returns:
         The actual value to use for the import
     """
+    if isinstance(import_source, ExportHandle):
+        return import_source()
     if hasattr(import_source, 'value'):
         return import_source.value
     elif hasattr(import_source, import_name):
