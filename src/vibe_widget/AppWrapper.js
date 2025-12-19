@@ -112,7 +112,7 @@ Suggestion: ${suggestion}` : err.message);
 import * as React2 from "https://esm.sh/react@18";
 import htm2 from "https://esm.sh/htm@3";
 var html2 = htm2.bind(React2.createElement);
-function FloatingMenu({ isOpen, onToggle, onGrabModeStart, isEditMode }) {
+function FloatingMenu({ isOpen, onToggle, onGrabModeStart, onViewSource, isEditMode }) {
   return html2`
     <div class="floating-menu-container">
       <style>
@@ -186,8 +186,8 @@ function FloatingMenu({ isOpen, onToggle, onGrabModeStart, isEditMode }) {
       ${isOpen && html2`
         <div class="menu-options">
           <div class="menu-option" onClick=${onGrabModeStart}>Edit Element</div>
+          <div class="menu-option" onClick=${onViewSource}>View Source</div>
           <div class="menu-option disabled">Export (Coming Soon)</div>
-          <div class="menu-option disabled">View Source</div>
         </div>
       `}
     </div>
@@ -882,14 +882,307 @@ function useKeyboardShortcuts({ isLoading, hasCode, grabMode, onGrabStart }) {
 // src/vibe_widget/AppWrapper/AppWrapper.js
 var html7 = htm7.bind(React9.createElement);
 ensureGlobalStyles();
+var AUDIT_ACK_KEY = "vibe_widget_audit_ack";
+function SourceViewer({ code, model, onClose }) {
+  const containerRef = React9.useRef(null);
+  const viewRef = React9.useRef(null);
+  const editableCompartmentRef = React9.useRef(null);
+  const viewModuleRef = React9.useRef(null);
+  const [draftCode, setDraftCode] = React9.useState(code || "");
+  const [isReadOnly, setReadOnly] = React9.useState(false);
+  const [isLoading, setLoading] = React9.useState(true);
+  const [loadError, setLoadError] = React9.useState("");
+  React9.useEffect(() => {
+    let isMounted = true;
+    const setupEditor = async () => {
+      try {
+        setLoading(true);
+        const [{ EditorState, Compartment }, { EditorView }, { basicSetup }, { javascript }] = await Promise.all([
+          import("https://esm.sh/@codemirror/state@6.2.1?pin=v135"),
+          import("https://esm.sh/@codemirror/view@6.26.3?pin=v135"),
+          import("https://esm.sh/@codemirror/basic-setup@0.20.0?pin=v135"),
+          import("https://esm.sh/@codemirror/lang-javascript@6.2.2?pin=v135")
+        ]);
+        if (!isMounted || !containerRef.current) return;
+        const editableCompartment = new Compartment();
+        editableCompartmentRef.current = editableCompartment;
+        viewModuleRef.current = { EditorView };
+        const startState = EditorState.create({
+          doc: draftCode,
+          extensions: [
+            basicSetup,
+            javascript(),
+            editableCompartment.of(EditorView.editable.of(!isReadOnly)),
+            EditorView.updateListener.of((update) => {
+              if (update.docChanged) {
+                setDraftCode(update.state.doc.toString());
+              }
+            })
+          ]
+        });
+        viewRef.current = new EditorView({ state: startState, parent: containerRef.current });
+        setLoading(false);
+      } catch (err) {
+        if (!isMounted) return;
+        console.error("Failed to load CodeMirror:", err);
+        setLoadError("Failed to load editor.");
+        setLoading(false);
+      }
+    };
+    setupEditor();
+    return () => {
+      isMounted = false;
+      if (viewRef.current) {
+        viewRef.current.destroy();
+        viewRef.current = null;
+      }
+    };
+  }, []);
+  React9.useEffect(() => {
+    if (!viewRef.current || !editableCompartmentRef.current || !viewModuleRef.current) return;
+    viewRef.current.dispatch({
+      effects: editableCompartmentRef.current.reconfigure(
+        viewModuleRef.current.EditorView.editable.of(!isReadOnly)
+      )
+    });
+  }, [isReadOnly]);
+  React9.useEffect(() => {
+    if (!viewRef.current) {
+      setDraftCode(code || "");
+      return;
+    }
+    if (viewRef.current.hasFocus) return;
+    const current = viewRef.current.state.doc.toString();
+    if (current === (code || "")) return;
+    viewRef.current.dispatch({
+      changes: { from: 0, to: current.length, insert: code || "" }
+    });
+    setDraftCode(code || "");
+  }, [code]);
+  const handleApply = () => {
+    model.set("code", draftCode);
+    model.save_changes();
+  };
+  const isDirty = draftCode !== (code || "");
+  return html7`
+    <div class="source-viewer-overlay">
+      <style>
+        .source-viewer-overlay {
+          position: absolute;
+          inset: 0;
+          z-index: 1150;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: rgba(5, 5, 5, 0.78);
+          backdrop-filter: blur(4px);
+        }
+        .source-viewer-card {
+          width: min(980px, 92%);
+          max-height: 80vh;
+          background: #0b1220;
+          border: 1px solid rgba(148, 163, 184, 0.35);
+          border-radius: 12px;
+          box-shadow: 0 18px 45px rgba(0, 0, 0, 0.45);
+          display: flex;
+          flex-direction: column;
+        }
+        .source-viewer-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 12px 14px;
+          border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+          color: #e2e8f0;
+          font-family: "JetBrains Mono", "Space Mono", ui-monospace, SFMono-Regular,
+            Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+          font-size: 12px;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+        }
+        .source-viewer-actions {
+          display: flex;
+          gap: 8px;
+          align-items: center;
+        }
+        .source-viewer-button {
+          background: transparent;
+          color: #94a3b8;
+          border: 1px solid rgba(148, 163, 184, 0.4);
+          border-radius: 6px;
+          padding: 4px 8px;
+          font-size: 11px;
+          cursor: pointer;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+        }
+        .source-viewer-button.primary {
+          background: #f97316;
+          color: #0b0b0b;
+          border-color: transparent;
+          font-weight: 600;
+        }
+        .source-viewer-button:disabled {
+          opacity: 0.4;
+          cursor: not-allowed;
+        }
+        .source-viewer-body {
+          padding: 12px 14px 16px;
+          overflow: hidden;
+          flex: 1;
+        }
+        .source-viewer-editor {
+          border: 1px solid rgba(148, 163, 184, 0.2);
+          border-radius: 8px;
+          background: #0a0f1a;
+          height: 100%;
+          overflow: hidden;
+        }
+        .source-viewer-editor .cm-editor {
+          height: 100%;
+          background: #0a0f1a;
+        }
+        .source-viewer-editor .cm-scroller {
+          font-family: "JetBrains Mono", "Space Mono", ui-monospace, SFMono-Regular,
+            Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        }
+        .source-viewer-loading {
+          padding: 16px;
+          color: #94a3b8;
+          font-size: 12px;
+        }
+        .source-viewer-error {
+          padding: 16px;
+          color: #fca5a5;
+          font-size: 12px;
+        }
+        @media (max-width: 900px) {
+          .source-viewer-card {
+            width: 96%;
+          }
+        }
+      </style>
+      <div class="source-viewer-card" role="dialog" aria-live="polite">
+        <div class="source-viewer-header">
+          <span>Widget Source</span>
+          <div class="source-viewer-actions">
+            <button class="source-viewer-button" onClick=${() => setReadOnly(!isReadOnly)}>
+              ${isReadOnly ? "Editable" : "Read-Only"}
+            </button>
+            <button class="source-viewer-button primary" disabled=${!isDirty} onClick=${handleApply}>
+              Apply Changes
+            </button>
+            <button class="source-viewer-button" onClick=${onClose}>Close</button>
+          </div>
+        </div>
+        <div class="source-viewer-body">
+          <div class="source-viewer-editor">
+            ${isLoading && html7`<div class="source-viewer-loading">Loading editor...</div>`}
+            ${loadError && html7`<div class="source-viewer-error">${loadError}</div>`}
+            <div ref=${containerRef} style=${{ height: "100%" }}></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+function AuditNotice({ onAccept }) {
+  return html7`
+    <div class="audit-overlay">
+      <style>
+        .audit-overlay {
+          position: absolute;
+          inset: 0;
+          z-index: 1200;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: rgba(6, 6, 6, 0.72);
+          backdrop-filter: blur(4px);
+        }
+        .audit-card {
+          width: min(520px, 92%);
+          background: #0f172a;
+          color: #e2e8f0;
+          border: 2px solid rgba(248, 113, 113, 0.65);
+          border-radius: 12px;
+          padding: 20px;
+          box-shadow: 0 18px 45px rgba(0, 0, 0, 0.4);
+          font-family: "JetBrains Mono", "Space Mono", ui-monospace, SFMono-Regular,
+            Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        }
+        .audit-title {
+          font-size: 14px;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          color: #fca5a5;
+          margin-bottom: 12px;
+        }
+        .audit-body {
+          font-size: 13px;
+          line-height: 1.5;
+          color: #e2e8f0;
+          margin-bottom: 16px;
+        }
+        .audit-body strong {
+          color: #fef2f2;
+        }
+        .audit-actions {
+          display: flex;
+          justify-content: flex-end;
+          gap: 10px;
+        }
+        .audit-accept {
+          background: #f97316;
+          color: #0b0b0b;
+          border: none;
+          border-radius: 8px;
+          padding: 8px 14px;
+          font-size: 12px;
+          font-weight: 600;
+          cursor: pointer;
+        }
+        .audit-accept:hover {
+          background: #fb923c;
+        }
+      </style>
+      <div class="audit-card" role="dialog" aria-live="polite">
+        <div class="audit-title">Audit Required</div>
+        <div class="audit-body">
+          Vibe widgets are <strong>LLM-generated code</strong>. Before using results,
+          review the widget for correctness, data handling, and safety.
+          By continuing, you acknowledge the need to audit outputs.
+        </div>
+        <div class="audit-actions">
+          <button class="audit-accept" onClick=${onAccept}>
+            I Understand
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+}
 function AppWrapper({ model }) {
   const { status, logs, code } = useModelSync(model);
   const [isMenuOpen, setMenuOpen] = React9.useState(false);
   const [grabMode, setGrabMode] = React9.useState(null);
   const [promptCache, setPromptCache] = React9.useState({});
+  const [showSource, setShowSource] = React9.useState(false);
+  const [hasAuditAck, setHasAuditAck] = React9.useState(() => {
+    try {
+      return sessionStorage.getItem(AUDIT_ACK_KEY) === "true";
+    } catch (err) {
+      return false;
+    }
+  });
+  const [showAudit, setShowAudit] = React9.useState(false);
   const handleGrabStart = () => {
     setMenuOpen(false);
     setGrabMode("selecting");
+  };
+  const handleViewSource = () => {
+    setMenuOpen(false);
+    setShowSource(true);
   };
   const handleElementSelect = (elementDescription, elementBounds) => {
     const elementKey = `${elementDescription.tag}-${elementDescription.classes}-${elementDescription.text?.slice(0, 20)}`;
@@ -913,6 +1206,20 @@ function AppWrapper({ model }) {
   const isLoading = status === "generating";
   const hasCode = code && code.length > 0;
   useKeyboardShortcuts({ isLoading, hasCode, grabMode, onGrabStart: handleGrabStart });
+  React9.useEffect(() => {
+    if (!hasAuditAck && !isLoading && hasCode) {
+      setShowAudit(true);
+    }
+  }, [hasAuditAck, isLoading, hasCode]);
+  const handleAuditAccept = () => {
+    try {
+      sessionStorage.setItem(AUDIT_ACK_KEY, "true");
+    } catch (err) {
+      // Session storage not available; still allow dismissal for this render.
+    }
+    setHasAuditAck(true);
+    setShowAudit(false);
+  };
   return html7`
     <div class="vibe-container" style=${{ position: "relative", width: "100%" }}>
       ${hasCode && html7`
@@ -937,6 +1244,7 @@ function AppWrapper({ model }) {
           isOpen=${isMenuOpen} 
           onToggle=${() => setMenuOpen(!isMenuOpen)}
           onGrabModeStart=${handleGrabStart}
+          onViewSource=${handleViewSource}
           isEditMode=${!!grabMode}
         />
       `}
@@ -956,6 +1264,14 @@ function AppWrapper({ model }) {
           onSubmit=${handleEditSubmit}
           onCancel=${handleCancel}
         />
+      `}
+
+      ${showAudit && html7`
+        <${AuditNotice} onAccept=${handleAuditAccept} />
+      `}
+
+      ${showSource && html7`
+        <${SourceViewer} code=${code} model=${model} onClose=${() => setShowSource(false)} />
       `}
     </div>
   `;
