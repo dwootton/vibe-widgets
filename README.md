@@ -213,10 +213,10 @@ Each export is exposed as a callable handle (e.g., `scatter.selected_indices()`)
 v1 = vw.create("basic scatter plot", df)
 
 # Refine it
-v2 = vw.revise("add color by category", v1)
+v2 = v1.revise("add color by category")
 
 # Refine further
-v3 = vw.revise("make points larger and add tooltips", v2)
+v3 = v2.revise("make points larger and add tooltips")
 ```
 
 More examples available in [`examples/`](examples/) directory.
@@ -233,7 +233,6 @@ Create a new widget from scratch.
 widget = vw.create(
     description: str,           # Natural language description
     data=None,                  # DataFrame, file path, URL, or None
-    show_progress=True,         # Show generation progress
     exports=None,               # Dict of {trait_name: description}
     imports=None,               # Dict of {trait_name: source_widget}
     config=None                 # Config object (optional)
@@ -261,27 +260,19 @@ widget = vw.create(
   - Use `vw.imports(df, selected_indices=scatter.selected_indices)` to bundle data with imports
   - You can still pass a plain dict for legacy `imports={"selected": scatter_widget}` usage
 
-### `revise()`
+### `widget.revise()`
 
-Build upon an existing widget.
+Build upon an existing widget instance.
 
 ```python
-widget = vw.revise(
+widget = existing_widget.revise(
     description: str,           # Description of changes
-    source,                     # Widget, ComponentReference, ID, or path
     data=None,                  # Optional new data
-    show_progress=True,
     exports=None,
     imports=None,
     config=None
 )
 ```
-
-**Source types:**
-- `VibeWidget`: Existing widget variable
-- `ComponentReference`: `widget.component_name`
-- `str`: Widget ID from cache (e.g., "abc123-v1")
-- `Path`: File path to widget JS file
 
 ### `config()`
 
@@ -315,7 +306,7 @@ Natural Language → Data Processing → AI Code Generation → Validation → C
 
 **Architecture:**
 
-- **Core Module** (`core.py`): Main VibeWidget class, `create()` and `revise()` functions
+- **Core Module** (`core.py`): Main VibeWidget class and `create()` function
 - **Data Loading** (`data_tools.py`): Universal data loader supporting 15+ formats
 - **Agentic Orchestration** (`agentic.py`): Coordinates LLM code generation and validation
 - **LLM Provider** (`providers/openrouter_provider.py`): OpenRouter-only gateway with pinned defaults

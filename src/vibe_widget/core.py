@@ -97,7 +97,6 @@ class VibeWidget(anywidget.AnyWidget):
         description: str,
         df: pd.DataFrame,
         model: str = DEFAULT_MODEL,
-        show_progress: bool = True,
         exports: dict[str, str] | None = None,
         imports: dict[str, Any] | None = None,
         data_var_name: str | None = None,
@@ -130,7 +129,6 @@ class VibeWidget(anywidget.AnyWidget):
             description=description,
             df=df,
             model=model,
-            show_progress=show_progress,
             exports=exports,
             imports=imports,
             data_var_name=data_var_name,
@@ -145,7 +143,6 @@ class VibeWidget(anywidget.AnyWidget):
         description: str, 
         df: pd.DataFrame, 
         model: str = DEFAULT_MODEL,
-        show_progress: bool = True,
         exports: dict[str, str] | None = None,
         imports: dict[str, Any] | None = None,
         data_var_name: str | None = None,
@@ -163,7 +160,6 @@ class VibeWidget(anywidget.AnyWidget):
             description: Natural language description of desired visualization
             df: DataFrame to visualize
             model: OpenRouter model to use (or alias resolved via config)
-            show_progress: Whether to show progress widget (deprecated - now uses internal state)
             exports: Dict of trait_name -> description for state this widget exposes
             imports: Dict of trait_name -> source widget/value for state this widget consumes
             data_var_name: Variable name of the data parameter for cache key
@@ -205,12 +201,11 @@ class VibeWidget(anywidget.AnyWidget):
         self.observe(self._on_error, names='error_message')
         self.observe(self._on_grab_edit, names='grab_edit_request')
         
-        if show_progress:
-            try:
-                from IPython.display import display
-                display(self)
-            except ImportError:
-                pass
+        try:
+            from IPython.display import display
+            display(self)
+        except ImportError:
+            pass
         
         try:
             self.logs = [f"Analyzing data: {df.shape[0]} rows × {df.shape[1]} columns"]
@@ -323,7 +318,7 @@ class VibeWidget(anywidget.AnyWidget):
                 imports=imports_serialized,
                 base_code=self._base_code,
                 base_components=self._base_components,
-                progress_callback=stream_callback if show_progress else None,
+                progress_callback=stream_callback,
             )
             
             current_logs = list(self.logs)
@@ -398,7 +393,6 @@ class VibeWidget(anywidget.AnyWidget):
         exports: dict[str, str] | None,
         imports: dict[str, Any] | None,
         model: str,
-        show_progress: bool,
     ) -> None:
         self._recipe_description = description
         self._recipe_data_source = data_source
@@ -407,7 +401,6 @@ class VibeWidget(anywidget.AnyWidget):
         self._recipe_exports = exports
         self._recipe_imports = imports
         self._recipe_model = model
-        self._recipe_show_progress = show_progress
         self._recipe_model_resolved = model
 
     def __call__(self, *args, **kwargs):
@@ -420,7 +413,6 @@ class VibeWidget(anywidget.AnyWidget):
 
         candidate_data = kwargs.pop("data", None)
         candidate_imports = kwargs.pop("imports", None)
-        candidate_show_progress = kwargs.pop("show_progress", self._recipe_show_progress)
 
         if len(args) > 1:
             raise TypeError("Pass at most one positional argument to override data/imports.")
@@ -468,7 +460,6 @@ class VibeWidget(anywidget.AnyWidget):
             description=self._recipe_description,
             df=df,
             model=self._recipe_model_resolved,
-            show_progress=candidate_show_progress,
             exports=self._recipe_exports,
             imports=imports,
             data_var_name=None,
@@ -480,7 +471,6 @@ class VibeWidget(anywidget.AnyWidget):
         self,
         description: str,
         data: pd.DataFrame | str | Path | None = None,
-        show_progress: bool = True,
         exports: dict[str, str] | ExportBundle | None = None,
         imports: dict[str, Any] | ImportsBundle | None = None,
         config: Config | None = None,
@@ -489,9 +479,8 @@ class VibeWidget(anywidget.AnyWidget):
         Instance helper that mirrors vw.revise but defaults the source to self.
         Supports the same imports/exports/data wrappers as vw.revise.
         """
-        data, show_progress, exports, imports = _normalize_api_inputs(
+        data, exports, imports = _normalize_api_inputs(
             data=data,
-            show_progress=show_progress,
             exports=exports,
             imports=imports,
         )
@@ -499,7 +488,6 @@ class VibeWidget(anywidget.AnyWidget):
             description=description,
             source=self,
             data=data,
-            show_progress=show_progress,
             exports=exports,
             imports=imports,
             config=config,
@@ -806,33 +794,18 @@ def _resolve_model(
 
 def _normalize_api_inputs(
     data: Any,
-    show_progress: bool | ExportBundle | ImportsBundle,
     exports: dict[str, str] | ExportBundle | None,
     imports: dict[str, Any] | ImportsBundle | None,
-) -> tuple[Any, bool, dict[str, str] | None, dict[str, Any] | None]:
+) -> tuple[Any, dict[str, str] | None, dict[str, Any] | None]:
     """Allow flexible ordering/wrapping for exports/imports/data."""
     normalized_data = data
     normalized_imports = imports
     normalized_exports = exports
-    normalized_show_progress = show_progress
 
     # Data can be passed as an ImportsBundle to keep everything together
     if isinstance(normalized_data, ImportsBundle):
         normalized_imports = {**(normalized_data.imports or {}), **(normalized_imports or {})}
         normalized_data = normalized_data.data
-
-    # Third positional argument may now be exports (new API) or legacy exports dict
-    if isinstance(normalized_show_progress, ExportBundle):
-        normalized_exports = normalized_show_progress.exports
-        normalized_show_progress = True
-    elif isinstance(normalized_show_progress, dict) and normalized_exports is None:
-        normalized_exports = normalized_show_progress
-        normalized_show_progress = True
-    elif isinstance(normalized_show_progress, ImportsBundle):
-        normalized_imports = {**(normalized_show_progress.imports or {}), **(normalized_imports or {})}
-        if normalized_data is None:
-            normalized_data = normalized_show_progress.data
-        normalized_show_progress = True
 
     if isinstance(normalized_exports, ExportBundle):
         normalized_exports = normalized_exports.exports
@@ -842,13 +815,12 @@ def _normalize_api_inputs(
             normalized_data = normalized_imports.data
         normalized_imports = normalized_imports.imports
 
-    return normalized_data, bool(normalized_show_progress), normalized_exports, normalized_imports
+    return normalized_data, normalized_exports, normalized_imports
 
 
 def create(
     description: str,
     data: pd.DataFrame | str | Path | None = None,
-    show_progress: bool = True,
     exports: dict[str, str] | None = None,
     imports: dict[str, Any] | None = None,
     config: Config | None = None,
@@ -858,7 +830,6 @@ def create(
     Args:
         description: Natural language description of the visualization
         data: DataFrame, file path, or URL to visualize
-        show_progress: Whether to show progress
         exports: Dict of {trait_name: description} for exposed state
         imports: Dict of {trait_name: source} for consumed state
         config: Optional Config object with model settings (deprecated; call vw.config instead)
@@ -870,9 +841,8 @@ def create(
         >>> widget = create("show temperature trends", df)
         >>> widget = create("visualize sales data", "sales.csv")
     """
-    data, show_progress, exports, imports = _normalize_api_inputs(
+    data, exports, imports = _normalize_api_inputs(
         data=data,
-        show_progress=show_progress,
         exports=exports,
         imports=imports,
     )
@@ -883,7 +853,6 @@ def create(
         description=description,
         df=df,
         model=model,
-        show_progress=show_progress,
         exports=exports,
         imports=imports,
         data_var_name=None,
@@ -900,7 +869,6 @@ def create(
         exports=exports,
         imports=imports,
         model=model,
-        show_progress=show_progress,
     )
     
     return widget
@@ -962,7 +930,6 @@ def revise(
     description: str,
     source: "VibeWidget | ComponentReference | str | Path",
     data: pd.DataFrame | str | Path | None = None,
-    show_progress: bool = True,
     exports: dict[str, str] | None = None,
     imports: dict[str, Any] | None = None,
     config: Config | None = None,
@@ -973,7 +940,6 @@ def revise(
         description: Natural language description of changes
         source: Widget, ComponentReference, widget ID, or file path
         data: DataFrame to visualize (uses source data if None)
-        show_progress: Whether to show progress
         exports: Dict of {trait_name: description} for new/modified exports
         imports: Dict of {trait_name: source} for new/modified imports
         config: Optional Config object with model settings (deprecated; call vw.config instead)
@@ -985,9 +951,8 @@ def revise(
         >>> scatter2 = revise("add hover tooltips", scatter)
         >>> hist = revise("histogram with slider", scatter.slider, data=df)
     """
-    data, show_progress, exports, imports = _normalize_api_inputs(
+    data, exports, imports = _normalize_api_inputs(
         data=data,
-        show_progress=show_progress,
         exports=exports,
         imports=imports,
     )
@@ -1000,7 +965,6 @@ def revise(
         description=description,
         df=df,
         model=model,
-        show_progress=show_progress,
         exports=exports,
         imports=imports,
         data_var_name=None,
@@ -1020,7 +984,6 @@ def revise(
         exports=exports,
         imports=imports,
         model=model,
-        show_progress=show_progress,
     )
     
     return widget
