@@ -21,7 +21,7 @@ export default function FloatingMenu({ isOpen, onToggle, onGrabModeStart, isEdit
           cursor: pointer;
           display: flex;
           align-items: center;
-          justifyContent: center;
+          justify-content: center;
           box-shadow: 0 2px 8px rgba(249, 115, 22, 0.3);
           transition: all 0.3s ease;
         }

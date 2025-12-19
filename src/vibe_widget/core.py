@@ -394,6 +394,7 @@ class VibeWidget(anywidget.AnyWidget):
         description: str,
         data_source: Any,
         data_type: type | None,
+        data_columns: list[str] | None,
         exports: dict[str, str] | None,
         imports: dict[str, Any] | None,
         model: str,
@@ -402,6 +403,7 @@ class VibeWidget(anywidget.AnyWidget):
         self._recipe_description = description
         self._recipe_data_source = data_source
         self._recipe_data_type = data_type
+        self._recipe_data_columns = data_columns
         self._recipe_exports = exports
         self._recipe_imports = imports
         self._recipe_model = model
@@ -454,6 +456,14 @@ class VibeWidget(anywidget.AnyWidget):
         existing_code = getattr(self, "code", None)
         existing_metadata = getattr(self, "_widget_metadata", None)
 
+        if self._recipe_data_columns and isinstance(df, pd.DataFrame):
+            missing = set(self._recipe_data_columns) - set(df.columns)
+            if missing:
+                raise ValueError(
+                    "The new dataset is missing required columns for this widget: "
+                    f"{sorted(missing)}. Provide data with these columns or regenerate the widget."
+                )
+
         return VibeWidget._create_with_dynamic_traits(
             description=self._recipe_description,
             df=df,
@@ -464,6 +474,35 @@ class VibeWidget(anywidget.AnyWidget):
             data_var_name=None,
             existing_code=existing_code,
             existing_metadata=existing_metadata,
+        )
+
+    def revise(
+        self,
+        description: str,
+        data: pd.DataFrame | str | Path | None = None,
+        show_progress: bool = True,
+        exports: dict[str, str] | ExportBundle | None = None,
+        imports: dict[str, Any] | ImportsBundle | None = None,
+        config: Config | None = None,
+    ) -> "VibeWidget":
+        """
+        Instance helper that mirrors vw.revise but defaults the source to self.
+        Supports the same imports/exports/data wrappers as vw.revise.
+        """
+        data, show_progress, exports, imports = _normalize_api_inputs(
+            data=data,
+            show_progress=show_progress,
+            exports=exports,
+            imports=imports,
+        )
+        return revise(
+            description=description,
+            source=self,
+            data=data,
+            show_progress=show_progress,
+            exports=exports,
+            imports=imports,
+            config=config,
         )
     
     def _on_error(self, change):
@@ -857,6 +896,7 @@ def create(
         description=description,
         data_source=data,
         data_type=type(data) if data is not None else None,
+        data_columns=list(df.columns) if isinstance(df, pd.DataFrame) else None,
         exports=exports,
         imports=imports,
         model=model,
@@ -976,6 +1016,7 @@ def revise(
         description=description,
         data_source=data if data is not None else source_info.df,
         data_type=type(data) if data is not None else (type(source_info.df) if source_info.df is not None else None),
+        data_columns=list(df.columns) if isinstance(df, pd.DataFrame) else None,
         exports=exports,
         imports=imports,
         model=model,
