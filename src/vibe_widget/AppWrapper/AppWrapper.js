@@ -18,6 +18,7 @@ const html = htm.bind(React.createElement);
 ensureGlobalStyles();
 
 const AUDIT_ACK_KEY = "vibe_widget_audit_ack";
+const AUDIT_AUTORUN_KEY = "vibe_widget_audit_autorun";
 
 function AppWrapper({ model }) {
   const {
@@ -54,6 +55,13 @@ function AppWrapper({ model }) {
     }
   });
   const [showAudit, setShowAudit] = React.useState(false);
+  const [hasAutoRunAudit, setHasAutoRunAudit] = React.useState(() => {
+    try {
+      return sessionStorage.getItem(AUDIT_AUTORUN_KEY) === "true";
+    } catch (err) {
+      return false;
+    }
+  });
 
   const handleGrabStart = () => {
     setMenuOpen(false);
@@ -109,6 +117,20 @@ function AppWrapper({ model }) {
       setShowAudit(true);
     }
   }, [hasAuditAck, isLoading, hasCode]);
+
+  React.useEffect(() => {
+    if (hasAutoRunAudit) return;
+    if (status !== "ready") return;
+    if (!code) return;
+    if (auditStatus === "running") return;
+    handleAuditRequest("fast");
+    try {
+      sessionStorage.setItem(AUDIT_AUTORUN_KEY, "true");
+    } catch (err) {
+      // Ignore storage failures and only track in memory.
+    }
+    setHasAutoRunAudit(true);
+  }, [hasAutoRunAudit, status, code, auditStatus]);
 
   React.useEffect(() => {
     if (!applyState.pending) return;

@@ -1272,7 +1272,6 @@ def create(
     )
     
     _link_imports(widget, imports)
-    _display_widget(widget)
     # Store recipe for convenient reruns/clones
     widget._set_recipe(
         description=description,
@@ -1388,7 +1387,6 @@ def revise(
     widget._base_widget_id = source_info.metadata.get("id") if source_info.metadata else None
     
     _link_imports(widget, imports)
-    _display_widget(widget)
     widget._set_recipe(
         description=description,
         data_source=data if data is not None else source_info.df,
