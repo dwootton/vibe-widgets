@@ -1,5 +1,5 @@
-import * as React from "https://esm.sh/react@18";
-import htm from "https://esm.sh/htm@3";
+import * as React from "react";
+import htm from "htm";
 
 const html = htm.bind(React.createElement);
 
@@ -37,6 +37,7 @@ export default function SandboxedRunner({ code, model }) {
           setGuestWidget(() => module.default);
           setError(null);
           model.set("error_message", "");
+          model.set("retry_count", 0);
           model.save_changes();
         } else {
           throw new Error("Generated code must export a default function");
