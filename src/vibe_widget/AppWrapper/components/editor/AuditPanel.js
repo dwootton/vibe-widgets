@@ -62,7 +62,7 @@ export default function AuditPanel({
                     title="Add to Changes"
                     onClick=${(event) => {
                       event.stopPropagation();
-                      onAddPendingChange(concern, cardId, { itemId: `${cardId}-base` });
+                      onAddPendingChange(concern, cardId, { itemId: `${cardId}-base`, source: "base" });
                     }}
                   >
                     +
@@ -121,6 +121,7 @@ export default function AuditPanel({
                               onAddPendingChange(concern, cardId, {
                                 itemId: `${cardId}-alt-${altIndex}`,
                                 label: `Recommendation: ${altText}`,
+                                source: "recommendation",
                                 alternative: altText
                               });
                             }}
@@ -130,6 +131,7 @@ export default function AuditPanel({
                                 onAddPendingChange(concern, cardId, {
                                   itemId: `${cardId}-alt-${altIndex}`,
                                   label: `Recommendation: ${altText}`,
+                                  source: "recommendation",
                                   alternative: altText
                                 });
                               }

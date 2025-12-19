@@ -38,6 +38,7 @@ export default function EditorViewer({
   const [manualNote, setManualNote] = React.useState("");
   const [codeChangeRanges, setCodeChangeRanges] = React.useState([]);
   const [lastClearSnapshot, setLastClearSnapshot] = React.useState(null);
+  const lastAppliedChangesRef = React.useRef(null);
   const bubbleEditorRef = React.useRef(null);
   const manualNoteRef = React.useRef(null);
 
@@ -102,20 +103,17 @@ export default function EditorViewer({
       return false;
     };
     const handleWheel = (event) => {
-      if (container.contains(event.target)) {
-        if (!canScrollEditor(event.deltaY)) {
-          event.preventDefault();
-          event.stopPropagation();
-          event.stopImmediatePropagation();
-        }
+      if (!container.contains(event.target)) return;
+      if (!canScrollEditor(event.deltaY)) {
+        return;
       }
+      event.stopPropagation();
+      event.stopImmediatePropagation();
     };
     const handleTouchMove = (event) => {
-      if (container.contains(event.target)) {
-        event.preventDefault();
-        event.stopPropagation();
-        event.stopImmediatePropagation();
-      }
+      if (!container.contains(event.target)) return;
+      event.stopPropagation();
+      event.stopImmediatePropagation();
     };
     window.addEventListener("keydown", handleWindowKeyDown, true);
     window.addEventListener("wheel", handleWheel, { capture: true, passive: false });
@@ -145,8 +143,22 @@ export default function EditorViewer({
 
   React.useEffect(() => {
     if (auditApplyResponse?.success) {
+      const applied = lastAppliedChangesRef.current || [];
+      const dismissed = applied
+        .filter((item) => (item.source === "recommendation" || item.source === "base") && item.cardId)
+        .map((item) => item.cardId);
+      if (dismissed.length > 0) {
+        setDismissedConcerns((prev) => {
+          const next = { ...prev };
+          dismissed.forEach((cardId) => {
+            next[cardId] = next[cardId] || cardId;
+          });
+          return next;
+        });
+      }
       setPendingChanges([]);
       setManualNote("");
+      lastAppliedChangesRef.current = null;
     }
   }, [auditApplyResponse]);
 
@@ -224,6 +236,7 @@ export default function EditorViewer({
           location: concern.location,
           id: concern.id || "",
           impact: concern.impact || "low",
+          source: options.source || "",
           alternative: options.alternative || "",
           user_note: options.user_note || ""
         }
@@ -301,6 +314,7 @@ export default function EditorViewer({
   const handleSend = () => {
     const hasPending = pendingChanges.length > 0 || manualNote.trim().length > 0;
     if (hasPending) {
+      lastAppliedChangesRef.current = pendingChanges.slice();
       onApply({
         type: "audit_apply",
         baseCode: draftCode,
