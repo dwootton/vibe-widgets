@@ -101,6 +101,8 @@ class VibeWidget(anywidget.AnyWidget):
         exports: dict[str, str] | None = None,
         imports: dict[str, Any] | None = None,
         data_var_name: str | None = None,
+        existing_code: str | None = None,
+        existing_metadata: dict[str, Any] | None = None,
         **kwargs,
     ) -> "VibeWidget":
         """Return a widget instance that includes traitlets for declared exports/imports."""
@@ -132,6 +134,8 @@ class VibeWidget(anywidget.AnyWidget):
             exports=exports,
             imports=imports,
             data_var_name=data_var_name,
+            existing_code=existing_code,
+            existing_metadata=existing_metadata,
             **init_values,
             **kwargs,
         )
@@ -148,6 +152,8 @@ class VibeWidget(anywidget.AnyWidget):
         base_code: str | None = None,
         base_components: list[str] | None = None,
         base_widget_id: str | None = None,
+        existing_code: str | None = None,
+        existing_metadata: dict[str, Any] | None = None,
         **kwargs
     ):
         """
@@ -211,6 +217,19 @@ class VibeWidget(anywidget.AnyWidget):
             
             resolved_model, config = _resolve_model(model)
             provider = OpenRouterProvider(resolved_model, config.api_key)
+            
+            if existing_code is not None:
+                self.logs = self.logs + ["Reusing existing widget code"]
+                self.code = existing_code
+                self.status = "ready"
+                self.description = description
+                self._widget_metadata = existing_metadata or {}
+                imports_serialized = {}
+                if self._imports:
+                    for import_name in self._imports.keys():
+                        imports_serialized[import_name] = f"<imported_trait:{import_name}>"
+                self.data_info = LLMProvider.build_data_info(df, self._exports, imports_serialized)
+                return
             
             # Serialize imports for cache lookup
             imports_serialized = {}
@@ -367,6 +386,85 @@ class VibeWidget(anywidget.AnyWidget):
                 # Fall back to default lookup for early init or missing attrs
                 pass
         return super().__getattribute__(name)
+
+    # --- Convenience rerun API ---
+    def _set_recipe(
+        self,
+        *,
+        description: str,
+        data_source: Any,
+        data_type: type | None,
+        exports: dict[str, str] | None,
+        imports: dict[str, Any] | None,
+        model: str,
+        show_progress: bool,
+    ) -> None:
+        self._recipe_description = description
+        self._recipe_data_source = data_source
+        self._recipe_data_type = data_type
+        self._recipe_exports = exports
+        self._recipe_imports = imports
+        self._recipe_model = model
+        self._recipe_show_progress = show_progress
+        self._recipe_model_resolved = model
+
+    def __call__(self, *args, **kwargs):
+        """Create a new widget instance, swapping data/imports heuristically."""
+        return self._rerun_with(*args, **kwargs)
+
+    def _rerun_with(self, *args, **kwargs) -> "VibeWidget":
+        if not hasattr(self, "_recipe_description"):
+            raise ValueError("This widget was created before rerun support was added.")
+
+        candidate_data = kwargs.pop("data", None)
+        candidate_imports = kwargs.pop("imports", None)
+        candidate_show_progress = kwargs.pop("show_progress", self._recipe_show_progress)
+
+        if len(args) > 1:
+            raise TypeError("Pass at most one positional argument to override data/imports.")
+
+        if len(args) == 1 and candidate_data is None and candidate_imports is None:
+            arg = args[0]
+            if isinstance(arg, ImportsBundle):
+                candidate_data = arg.data if arg.data is not None else candidate_data
+                merged = dict(self._recipe_imports or {})
+                merged.update(arg.imports or {})
+                candidate_imports = merged
+            else:
+                matched = False
+                if self._recipe_data_type and isinstance(arg, self._recipe_data_type):
+                    candidate_data = arg
+                    matched = True
+                if not matched:
+                    # Try to swap an import with the same type
+                    for name, source in (self._recipe_imports or {}).items():
+                        if source is not None and isinstance(arg, type(source)):
+                            merged = dict(self._recipe_imports or {})
+                            merged[name] = arg
+                            candidate_imports = merged
+                            matched = True
+                            break
+                if not matched:
+                    # Fallback: treat as data (covers DataFrame, str path, etc.)
+                    candidate_data = arg
+
+        data = candidate_data if candidate_data is not None else self._recipe_data_source
+        imports = candidate_imports if candidate_imports is not None else self._recipe_imports
+        df = load_data(data)
+        existing_code = getattr(self, "code", None)
+        existing_metadata = getattr(self, "_widget_metadata", None)
+
+        return VibeWidget._create_with_dynamic_traits(
+            description=self._recipe_description,
+            df=df,
+            model=self._recipe_model_resolved,
+            show_progress=candidate_show_progress,
+            exports=self._recipe_exports,
+            imports=imports,
+            data_var_name=None,
+            existing_code=existing_code,
+            existing_metadata=existing_metadata,
+        )
     
     def _on_error(self, change):
         """Called when frontend reports a runtime error."""
@@ -754,6 +852,16 @@ def create(
     
     _link_imports(widget, imports)
     _display_widget(widget)
+    # Store recipe for convenient reruns/clones
+    widget._set_recipe(
+        description=description,
+        data_source=data,
+        data_type=type(data) if data is not None else None,
+        exports=exports,
+        imports=imports,
+        model=model,
+        show_progress=show_progress,
+    )
     
     return widget
 
@@ -864,5 +972,14 @@ def revise(
     
     _link_imports(widget, imports)
     _display_widget(widget)
+    widget._set_recipe(
+        description=description,
+        data_source=data if data is not None else source_info.df,
+        data_type=type(data) if data is not None else (type(source_info.df) if source_info.df is not None else None),
+        exports=exports,
+        imports=imports,
+        model=model,
+        show_progress=show_progress,
+    )
     
     return widget
