@@ -58,13 +58,12 @@ pip-wheel-metadata/
 
 # Generated widgets
 *.html
-!web/index.html
 output/
 
-# Web build output
-web/dist/
-web/.env.local
-web/node_modules/
+# Doc build output
+doc/dist/
+doc/.env.local
+doc/node_modules/
 
 .meridian/
 
