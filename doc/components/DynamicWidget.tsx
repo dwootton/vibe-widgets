@@ -1,48 +1,80 @@
 import React, { useMemo } from 'react';
-import * as d3 from 'd3';
 // @ts-ignore
 import { html } from 'htm/react/index.js';
 
 interface DynamicWidgetProps {
-  code: string;
+  moduleUrl?: string; // runtime-loaded ESM from public
+  model?: any;
 }
 
-export default function DynamicWidget({ code }: DynamicWidgetProps) {
-  const Component = useMemo(() => {
-    try {
-      // 1. Strip imports (naive approach for the specific format we generated)
-      const cleanCode = code
-        .replace(/import .* from .*/g, '')
-        .replace(/export default function .*\({.*}\) {/, 'const Widget = ({ model, html, React }) => {') // Transform export default
-        .replace(/return html`/, 'return html`') 
-        .concat('\nreturn Widget;'); // Return the component function
+export default function DynamicWidget({ moduleUrl, model }: DynamicWidgetProps) {
+  // Use provided model or a basic shared stub
+  const sharedModel = useMemo(() => {
+    if (model) return model;
+    const listeners = new Map<string, Set<Function>>();
+    const state: Record<string, any> = {};
+    return {
+      get: (k: string) => state[k],
+      set: (k: string, v: any) => { state[k] = v; },
+      save_changes: () => {
+        for (const [key, subs] of listeners) {
+          const change = { name: key, new: state[key] };
+          subs.forEach((fn) => {
+            try { fn(change); } catch { }
+          });
+        }
+      },
+      on: (eventName: string, handler: Function) => {
+        // Expect format "change:trait"
+        const key = eventName.startsWith('change:') ? eventName.slice(7) : eventName;
+        const set = listeners.get(key) || new Set();
+        set.add(handler);
+        listeners.set(key, set);
+      },
+      off: (eventName: string, handler: Function) => {
+        const key = eventName.startsWith('change:') ? eventName.slice(7) : eventName;
+        const set = listeners.get(key);
+        if (set) set.delete(handler);
+      },
+      observe: (handler: Function, names?: string | string[]) => {
+        const keys = Array.isArray(names) ? names : names ? [names] : Object.keys(state);
+        keys.forEach((k) => {
+          const set = listeners.get(k) || new Set();
+          set.add(handler);
+          listeners.set(k, set);
+        });
+      },
+    };
+  }, [model]);
 
-      // 2. Create a function that constructs the component
-      // We pass dependencies into the scope
-      const createComponent = new Function('React', 'html', 'd3', cleanCode);
-      
-      // 3. Execute to get the Component definition
-      const WidgetFn = createComponent(React, html, d3);
-      
-      return WidgetFn;
-    } catch (e) {
-      console.error("Widget Compilation Error:", e);
-      return () => <div className="p-4 text-red-500 font-mono text-xs">Error compiling widget. check console.</div>;
+  const [Loaded, setLoaded] = React.useState<any>(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        if (moduleUrl) {
+          const mod = await import(/* @vite-ignore */ moduleUrl);
+          const fn = mod?.default ?? mod;
+          if (typeof fn !== 'function') throw new Error('Invalid widget module from URL');
+          if (!cancelled) setLoaded(() => fn);
+        }
+      } catch (e) {
+        console.error('Widget Module Load Error:', e);
+        if (!cancelled) setLoaded(() => () => <div className="p-4 text-red-500 font-mono text-xs">Error loading widget module. Check console.</div>);
+      }
     }
-  }, [code]);
-
-  // Mock Model for the widgets - Memoize to prevent re-renders
-  const mockModel = useMemo(() => ({
-    get: () => {},
-    set: () => {},
-    save_changes: () => {},
-    on: () => {},
-    off: () => {}
-  }), []);
+    load();
+    return () => { cancelled = true; };
+  }, [moduleUrl]);
 
   return (
     <div className="w-full h-full overflow-hidden">
-        <Component model={mockModel} html={html} React={React} />
+      {Loaded ? (
+        <Loaded model={sharedModel} html={html} React={React} />
+      ) : (
+        <div className="p-4 text-slate/50 font-mono text-xs">Loading widget…</div>
+      )}
     </div>
   );
 }

@@ -1,6 +1,17 @@
 import React from 'react';
 import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import NotebookGuide from '../components/NotebookGuide';
+import PyodideNotebook from '../components/PyodideNotebook';
+import { 
+    CROSS_WIDGET_NOTEBOOK, 
+    TICTACTOE_NOTEBOOK,
+    PDF_WEB_NOTEBOOK,
+    REVISE_NOTEBOOK,
+    WEATHER_DATA_FILES,
+    TICTACTOE_DATA_FILES,
+    PDF_WEB_DATA_FILES,
+    REVISE_DATA_FILES
+} from '../data/pyodideNotebooks';
 
 const Sidebar = () => {
     const location = useLocation();
@@ -13,6 +24,14 @@ const Sidebar = () => {
         { title: "Core Concepts", links: [
             { label: "Create", href: "/docs/create" },
             { label: "Revise", href: "/docs/revise" },
+            { label: "Iterations", href: "/docs/iterations" },
+            { label: "Reactivity", href: "/docs/reactivity" },
+        ]},
+        { title: "Live Examples", links: [
+            { label: "Cross-Widget Demo", href: "/docs/examples/cross-widget" },
+            { label: "Tic-Tac-Toe AI", href: "/docs/examples/tictactoe" },
+            { label: "PDF & Web Data", href: "/docs/examples/pdf-web" },
+            { label: "Revise Example", href: "/docs/examples/revise" },
         ]},
         { title: "Ecosystem", links: [
             { label: "Widgetarium", href: "/docs/widgetarium" },
@@ -72,6 +91,34 @@ const DocsPage = () => {
                         <DocContent title="Configuration">
                             <p>Configure your LLM provider keys.</p>
                         </DocContent>
+                    } />
+                    <Route path="/examples/cross-widget" element={
+                        <PyodideNotebook 
+                            cells={CROSS_WIDGET_NOTEBOOK}
+                            title="Cross-Widget Interactions"
+                            dataFiles={WEATHER_DATA_FILES}
+                        />
+                    } />
+                    <Route path="/examples/tictactoe" element={
+                        <PyodideNotebook 
+                            cells={TICTACTOE_NOTEBOOK}
+                            title="Tic-Tac-Toe AI"
+                            dataFiles={TICTACTOE_DATA_FILES}
+                        />
+                    } />
+                    <Route path="/examples/pdf-web" element={
+                        <PyodideNotebook 
+                            cells={PDF_WEB_NOTEBOOK}
+                            title="PDF & Web Data Extraction"
+                            dataFiles={PDF_WEB_DATA_FILES}
+                        />
+                    } />
+                    <Route path="/examples/revise" element={
+                        <PyodideNotebook 
+                            cells={REVISE_NOTEBOOK}
+                            title="Widget Revision"
+                            dataFiles={REVISE_DATA_FILES}
+                        />
                     } />
                      <Route path="*" element={
                         <DocContent title="Coming Soon">

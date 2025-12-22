@@ -120,6 +120,9 @@ class VibeWidget(anywidget.AnyWidget):
         imports: dict[str, Any] | None = None,
         theme: Theme | None = None,
         data_var_name: str | None = None,
+        base_code: str | None = None,
+        base_components: list[str] | None = None,
+        base_widget_id: str | None = None,
         existing_code: str | None = None,
         existing_metadata: dict[str, Any] | None = None,
         **kwargs,
@@ -153,6 +156,9 @@ class VibeWidget(anywidget.AnyWidget):
             imports=imports,
             theme=theme,
             data_var_name=data_var_name,
+            base_code=base_code,
+            base_components=base_components,
+            base_widget_id=base_widget_id,
             existing_code=existing_code,
             existing_metadata=existing_metadata,
             **init_values,
@@ -448,6 +454,9 @@ class VibeWidget(anywidget.AnyWidget):
         imports: dict[str, Any] | None,
         model: str,
         theme: Theme | None,
+        base_code: str | None = None,
+        base_components: list[str] | None = None,
+        base_widget_id: str | None = None,
     ) -> None:
         self._recipe_description = description
         self._recipe_data_source = data_source
@@ -458,6 +467,9 @@ class VibeWidget(anywidget.AnyWidget):
         self._recipe_model = model
         self._recipe_model_resolved = model
         self._recipe_theme = theme
+        self._recipe_base_code = base_code
+        self._recipe_base_components = base_components
+        self._recipe_base_widget_id = base_widget_id
 
     def __call__(self, *args, **kwargs):
         """Create a new widget instance, swapping data/imports heuristically."""
@@ -520,6 +532,9 @@ class VibeWidget(anywidget.AnyWidget):
             imports=imports,
             theme=self._recipe_theme,
             data_var_name=None,
+            base_code=getattr(self, '_recipe_base_code', None),
+            base_components=getattr(self, '_recipe_base_components', None),
+            base_widget_id=getattr(self, '_recipe_base_widget_id', None),
             existing_code=existing_code,
             existing_metadata=existing_metadata,
         )
@@ -1443,11 +1458,10 @@ def revise(
         imports=imports,
         theme=resolved_theme,
         data_var_name=None,
+        base_code=source_info.code,
+        base_components=source_info.components,
+        base_widget_id=source_info.metadata.get("id") if source_info.metadata else None,
     )
-    
-    widget._base_code = source_info.code
-    widget._base_components = source_info.components
-    widget._base_widget_id = source_info.metadata.get("id") if source_info.metadata else None
     
     _link_imports(widget, imports)
     widget._set_recipe(
@@ -1459,6 +1473,9 @@ def revise(
         imports=imports,
         model=model,
         theme=resolved_theme,
+        base_code=source_info.code,
+        base_components=source_info.components,
+        base_widget_id=source_info.metadata.get("id") if source_info.metadata else None,
     )
     
     return widget

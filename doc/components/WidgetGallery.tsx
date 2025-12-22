@@ -20,9 +20,9 @@ const GalleryItem = ({ example, index, mode }: { example: typeof EXAMPLES[0], in
         >
             <div className="h-[280px] bg-bone border-2 border-slate/5 rounded-lg overflow-hidden relative shadow-inner group-hover:border-orange/20 transition-colors">
                  <div className="absolute inset-0 bg-grid-pattern opacity-[0.05] pointer-events-none" />
-                 <div className="h-full w-full overflow-hidden">
-                    <DynamicWidget code={example.code} />
-                 </div>
+                      <div className="h-full w-full overflow-hidden">
+                          <DynamicWidget moduleUrl={example.moduleUrl} />
+                      </div>
                  {/* Decorative Overlay */}
                  <div className="absolute top-2 right-2 px-2 py-1 bg-white/80 backdrop-blur rounded text-[9px] font-mono border border-slate/5 text-slate/40 uppercase tracking-widest">Live Runtime</div>
             </div>

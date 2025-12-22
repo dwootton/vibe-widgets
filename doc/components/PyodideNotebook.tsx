@@ -1,0 +1,611 @@
+import React, { useState, useEffect, useRef, useCallback, ReactNode, Key, useMemo } from 'react';
+// @ts-ignore
+import { html } from 'htm/react/index.js';
+import { pyodideRuntime, PyodideState, WidgetModel } from '../utils/PyodideRuntime';
+
+/**
+ * Chevron icon for collapsible sections
+ */
+function ChevronIcon({ expanded, className = '' }: { expanded: boolean; className?: string }) {
+  return (
+    <svg 
+      className={`w-4 h-4 transition-transform duration-200 ${expanded ? 'rotate-90' : ''} ${className}`}
+      fill="none" 
+      viewBox="0 0 24 24" 
+      stroke="currentColor"
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+    </svg>
+  );
+}
+
+/**
+ * Python syntax highlighter using regex tokenization
+ */
+function PythonHighlighter({ code }: { code: string }) {
+  const highlighted = useMemo(() => {
+    // Token patterns for Python syntax
+    const patterns: Array<{ pattern: RegExp; className: string }> = [
+      // Comments (must come first to avoid matching # in strings)
+      { pattern: /#[^\n]*/g, className: 'text-slate/50 italic' },
+      // Triple-quoted strings
+      { pattern: /"""[\s\S]*?"""|'''[\s\S]*?'''/g, className: 'text-green-600' },
+      // Double-quoted strings
+      { pattern: /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g, className: 'text-green-600' },
+      // f-strings
+      { pattern: /f"(?:[^"\\]|\\.)*"|f'(?:[^'\\]|\\.)*'/g, className: 'text-green-600' },
+      // Keywords
+      { pattern: /\b(import|from|as|def|class|return|if|elif|else|for|while|try|except|finally|with|raise|pass|break|continue|and|or|not|in|is|None|True|False|lambda|yield|global|nonlocal|assert|async|await)\b/g, className: 'text-purple-600 font-semibold' },
+      // Built-in functions
+      { pattern: /\b(print|len|range|list|dict|set|tuple|str|int|float|bool|type|isinstance|hasattr|getattr|setattr|open|input|format|sorted|enumerate|zip|map|filter|sum|min|max|abs|round|any|all|dir|help|id|repr|super)\b(?=\s*\()/g, className: 'text-cyan-600' },
+      // Decorators
+      { pattern: /@\w+/g, className: 'text-yellow-600' },
+      // Numbers
+      { pattern: /\b\d+\.?\d*\b/g, className: 'text-orange-500' },
+      // Function/method calls
+      { pattern: /\b([a-zA-Z_]\w*)\s*(?=\()/g, className: 'text-blue-600' },
+      // Self/cls
+      { pattern: /\b(self|cls)\b/g, className: 'text-red-500' },
+    ];
+
+    // Tokenize the code
+    interface Token {
+      text: string;
+      className?: string;
+      index: number;
+    }
+
+    const tokens: Token[] = [];
+
+    // Find all matches and their positions
+    const allMatches: Array<{ start: number; end: number; text: string; className: string }> = [];
+
+    patterns.forEach(({ pattern, className }) => {
+      const regex = new RegExp(pattern.source, pattern.flags);
+      let match;
+      while ((match = regex.exec(code)) !== null) {
+        allMatches.push({
+          start: match.index,
+          end: match.index + match[0].length,
+          text: match[0],
+          className,
+        });
+      }
+    });
+
+    // Sort by position and filter overlapping (earlier patterns take priority)
+    allMatches.sort((a, b) => a.start - b.start);
+    
+    const filteredMatches: typeof allMatches = [];
+    let lastEnd = 0;
+    
+    for (const match of allMatches) {
+      if (match.start >= lastEnd) {
+        filteredMatches.push(match);
+        lastEnd = match.end;
+      }
+    }
+
+    // Build tokens
+    let pos = 0;
+    for (const match of filteredMatches) {
+      if (match.start > pos) {
+        tokens.push({ text: code.slice(pos, match.start), index: pos });
+      }
+      tokens.push({ text: match.text, className: match.className, index: match.start });
+      pos = match.end;
+    }
+    if (pos < code.length) {
+      tokens.push({ text: code.slice(pos), index: pos });
+    }
+
+    return tokens;
+  }, [code]);
+
+  return (
+    <code className="font-mono text-sm whitespace-pre-wrap">
+      {highlighted.map((token, i) => (
+        token.className ? (
+          <span key={i} className={token.className}>{token.text}</span>
+        ) : (
+          <span key={i} className="text-slate">{token.text}</span>
+        )
+      ))}
+    </code>
+  );
+}
+
+export interface NotebookCell {
+  type: 'markdown' | 'code';
+  content: string;
+  readOnly?: boolean; // If true, show as static display
+  defaultCollapsed?: boolean; // If true, start collapsed
+  label?: string; // Optional label for collapsed state
+}
+
+export interface CellOutput {
+  type: 'stdout' | 'stderr' | 'result' | 'widget';
+  content: any;
+  widgetId?: string;
+  moduleUrl?: string;
+}
+
+interface CellState {
+  running: boolean;
+  executed: boolean;
+  outputs: CellOutput[];
+  codeCollapsed: boolean;
+  outputCollapsed: boolean;
+}
+
+interface PyodideNotebookProps {
+  cells: NotebookCell[];
+  title?: string;
+  dataFiles?: { url: string; varName: string }[];
+}
+
+// Helper type for components used in .map()
+interface WithKey { key?: Key; }
+
+/**
+ * PyodideNotebook - A Jupyter-style notebook powered by Pyodide
+ * 
+ * Runs actual Python code in the browser:
+ * - pandas, numpy, scikit-learn available
+ * - Cross-widget reactivity via traitlets simulation
+ * - Pre-generated widgets load from /examples
+ */
+export default function PyodideNotebook({ cells, title, dataFiles = [] }: PyodideNotebookProps) {
+  const [pyodideState, setPyodideState] = useState<PyodideState>({
+    ready: false,
+    loading: false,
+    error: null,
+    loadProgress: 0,
+  });
+  const [cellStates, setCellStates] = useState<CellState[]>(
+    cells.map((cell) => ({ 
+      running: false, 
+      executed: false, 
+      outputs: [],
+      codeCollapsed: cell.defaultCollapsed ?? false,
+      outputCollapsed: false,
+    }))
+  );
+  const [widgets, setWidgets] = useState<Map<string, { moduleUrl: string; model: WidgetModel }>>(new Map());
+  const dataLoadedRef = useRef(false);
+
+  // Subscribe to Pyodide state changes
+  useEffect(() => {
+    return pyodideRuntime.onStateChange(setPyodideState);
+  }, []);
+
+  // Set up widget display handler
+  useEffect(() => {
+    pyodideRuntime.setWidgetHandler((widgetId, moduleUrl, model) => {
+      setWidgets(prev => {
+        const next = new Map(prev);
+        next.set(widgetId, { moduleUrl, model: model as WidgetModel });
+        return next;
+      });
+    });
+  }, []);
+
+  // Load Pyodide on mount
+  useEffect(() => {
+    pyodideRuntime.load().catch(console.error);
+  }, []);
+
+  // Load data files when Pyodide is ready
+  useEffect(() => {
+    if (!pyodideState.ready || dataLoadedRef.current || dataFiles.length === 0) return;
+    
+    dataLoadedRef.current = true;
+    
+    Promise.all(
+      dataFiles.map((file: any) => pyodideRuntime.loadDataFile(file.url, file.varName, file.type))
+    ).catch(console.error);
+  }, [pyodideState.ready, dataFiles]);
+
+  const runCell = useCallback(async (index: number) => {
+    if (!pyodideState.ready) return;
+
+    const cell = cells[index];
+    if (cell.type !== 'code') return;
+
+    // Update cell state to running
+    setCellStates(prev => {
+      const next = [...prev];
+      next[index] = { ...next[index], running: true, outputs: [] };
+      return next;
+    });
+
+    const outputs: CellOutput[] = [];
+
+    try {
+      const result = await pyodideRuntime.runPython(cell.content, (text, type) => {
+        if (text.trim()) {
+          outputs.push({ type, content: text });
+        }
+      });
+
+      // Check if result is displayable
+      if (result !== undefined && result !== null) {
+        outputs.push({ type: 'result', content: String(result) });
+      }
+
+    } catch (error: any) {
+      outputs.push({ type: 'stderr', content: error.message });
+    }
+
+    setCellStates(prev => {
+      const next = [...prev];
+      next[index] = { 
+        ...next[index],
+        running: false, 
+        executed: true, 
+        outputs,
+      };
+      return next;
+    });
+  }, [cells, pyodideState.ready]);
+
+  const runAllCells = useCallback(async () => {
+    for (let i = 0; i < cells.length; i++) {
+      if (cells[i].type === 'code' && !cells[i].readOnly) {
+        await runCell(i);
+      }
+    }
+  }, [cells, runCell]);
+
+  const toggleCodeCollapse = useCallback((index: number) => {
+    setCellStates(prev => {
+      const next = [...prev];
+      next[index] = { ...next[index], codeCollapsed: !next[index].codeCollapsed };
+      return next;
+    });
+  }, []);
+
+  const toggleOutputCollapse = useCallback((index: number) => {
+    setCellStates(prev => {
+      const next = [...prev];
+      next[index] = { ...next[index], outputCollapsed: !next[index].outputCollapsed };
+      return next;
+    });
+  }, []);
+
+  const collapseAllCode = useCallback(() => {
+    setCellStates(prev => prev.map(s => ({ ...s, codeCollapsed: true })));
+  }, []);
+
+  const expandAllCode = useCallback(() => {
+    setCellStates(prev => prev.map(s => ({ ...s, codeCollapsed: false })));
+  }, []);
+
+  return (
+    <div className="max-w-5xl mx-auto">
+      {title && (
+        <div className="mb-8">
+          <h1 className="text-5xl font-display font-bold mb-4">{title}</h1>
+        </div>
+      )}
+
+      {/* Pyodide Loading Status */}
+      {!pyodideState.ready && (
+        <div className="mb-8 bg-white border-2 border-slate/20 rounded-lg p-6 shadow-sm">
+          {pyodideState.loading ? (
+            <div>
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-5 h-5 border-2 border-orange border-t-transparent rounded-full animate-spin" />
+                <span className="font-mono text-sm">Loading Python runtime...</span>
+              </div>
+              <div className="w-full bg-slate/10 rounded-full h-2">
+                <div 
+                  className="bg-orange h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${pyodideState.loadProgress}%` }}
+                />
+              </div>
+              <p className="text-xs text-slate/50 mt-2 font-mono">
+                Loading pandas, numpy, scikit-learn ({pyodideState.loadProgress}%)
+              </p>
+            </div>
+          ) : pyodideState.error ? (
+            <div className="text-red-600">
+              <p className="font-bold">Failed to load Python runtime</p>
+              <p className="text-sm font-mono mt-2">{pyodideState.error}</p>
+            </div>
+          ) : (
+            <button
+              onClick={() => pyodideRuntime.load()}
+              className="bg-orange text-white px-4 py-2 rounded-lg font-mono text-sm hover:bg-orange/80 transition-colors"
+            >
+              Load Python Runtime
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Run All Button */}
+      {pyodideState.ready && (
+        <div className="mb-6 flex flex-wrap gap-3 items-center">
+          <button
+            onClick={runAllCells}
+            className="bg-orange text-white px-4 py-2 rounded-lg font-mono text-sm hover:bg-orange/80 transition-colors flex items-center gap-2"
+          >
+            <span>▶</span> Run All Cells
+          </button>
+          <button
+            onClick={collapseAllCode}
+            className="bg-slate/10 text-slate px-3 py-2 rounded-lg font-mono text-xs hover:bg-slate/20 transition-colors"
+          >
+            ⊟ Collapse All
+          </button>
+          <button
+            onClick={expandAllCode}
+            className="bg-slate/10 text-slate px-3 py-2 rounded-lg font-mono text-xs hover:bg-slate/20 transition-colors"
+          >
+            ⊞ Expand All
+          </button>
+          <span className="text-slate/50 text-sm font-mono">
+            Python ready • pandas, numpy, sklearn
+          </span>
+        </div>
+      )}
+
+      {/* Notebook Cells */}
+      <div className="space-y-4">
+        {cells.map((cell, index) => (
+          <NotebookCellComponent
+            key={index}
+            cell={cell}
+            index={index}
+            state={cellStates[index]}
+            widgets={widgets}
+            pyodideReady={pyodideState.ready}
+            onRun={() => runCell(index)}
+            onToggleCode={() => toggleCodeCollapse(index)}
+            onToggleOutput={() => toggleOutputCollapse(index)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Individual notebook cell
+ */
+interface NotebookCellComponentProps extends WithKey {
+  cell: NotebookCell;
+  index: number;
+  state: CellState;
+  widgets: Map<string, { moduleUrl: string; model: WidgetModel }>;
+  pyodideReady: boolean;
+  onRun: () => void;
+  onToggleCode: () => void;
+  onToggleOutput: () => void;
+}
+
+function NotebookCellComponent(props: NotebookCellComponentProps) {
+  const { cell, index, state, widgets, pyodideReady, onRun, onToggleCode, onToggleOutput } = props;
+  const [markdownCollapsed, setMarkdownCollapsed] = useState(cell.defaultCollapsed ?? false);
+
+  if (cell.type === 'markdown') {
+    // Extract title from HTML for collapsed preview
+    const titleMatch = cell.content.match(/<h[1-3][^>]*>([^<]+)<\/h[1-3]>/);
+    const previewTitle = titleMatch ? titleMatch[1] : 'Markdown';
+
+    return (
+      <div className="bg-white border-2 border-slate/10 rounded-lg overflow-hidden">
+        <button
+          onClick={() => setMarkdownCollapsed(!markdownCollapsed)}
+          className="w-full flex items-center gap-2 px-4 py-2 text-left hover:bg-slate/5 transition-colors"
+        >
+          <ChevronIcon expanded={!markdownCollapsed} className="text-slate/40" />
+          <span className="font-mono text-xs text-slate/50">Markdown</span>
+          {markdownCollapsed && (
+            <span className="text-sm text-slate/60 truncate">{previewTitle}</span>
+          )}
+        </button>
+        {!markdownCollapsed && (
+          <div className="px-6 pb-6">
+            <div 
+              className="prose prose-slate max-w-none"
+              dangerouslySetInnerHTML={{ __html: cell.content }}
+            />
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Code cell
+  const hasOutput = state.outputs.length > 0 || state.running;
+  const hasWidget = state.outputs.some(o => o.type === 'result' && o.content.includes('Widget:'));
+  const codePreview = cell.content.split('\n')[0].slice(0, 50) + (cell.content.length > 50 ? '...' : '');
+
+  return (
+    <div className="bg-white border-2 border-slate/20 rounded-lg overflow-hidden shadow-sm">
+      {/* Code Input Header */}
+      <div className="flex items-center justify-between px-4 py-2 bg-slate/5 border-b border-slate/10">
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={onToggleCode}
+            className="flex items-center gap-2 hover:bg-slate/10 rounded px-1 py-0.5 transition-colors"
+          >
+            <ChevronIcon expanded={!state.codeCollapsed} className="text-slate/40" />
+            <span className="font-mono text-xs text-slate/50">
+              In [{state.executed ? index + 1 : ' '}]:
+            </span>
+          </button>
+          {state.codeCollapsed && (
+            <span className="font-mono text-xs text-slate/40 truncate max-w-[300px]">{codePreview}</span>
+          )}
+          {!cell.readOnly && pyodideReady && !state.codeCollapsed && (
+            <button
+              onClick={onRun}
+              disabled={state.running}
+              className="text-xs bg-orange/10 text-orange px-2 py-1 rounded hover:bg-orange/20 transition-colors disabled:opacity-50 font-mono"
+            >
+              {state.running ? '⏳ Running...' : '▶ Run'}
+            </button>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {cell.readOnly && (
+            <span className="text-xs text-slate/40 font-mono">read-only</span>
+          )}
+          {cell.label && (
+            <span className="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded font-mono">{cell.label}</span>
+          )}
+        </div>
+      </div>
+      
+      {/* Code Content */}
+      {!state.codeCollapsed && (
+        <pre className="px-4 py-3 overflow-x-auto bg-slate/5">
+          <PythonHighlighter code={cell.content} />
+        </pre>
+      )}
+
+      {/* Cell Output */}
+      {hasOutput && (
+        <div className="border-t-2 border-slate/10">
+          {/* Output Header */}
+          <button
+            onClick={onToggleOutput}
+            className="w-full flex items-center gap-2 px-4 py-2 bg-bone/30 hover:bg-bone/50 transition-colors text-left"
+          >
+            <ChevronIcon expanded={!state.outputCollapsed} className="text-slate/40" />
+            <span className="font-mono text-xs text-slate/50">
+              Out [{state.executed ? index + 1 : ' '}]:
+            </span>
+            {state.outputCollapsed && hasWidget && (
+              <span className="text-xs bg-green-100 text-green-600 px-2 py-0.5 rounded font-mono">Widget</span>
+            )}
+            {state.running && (
+              <div className="flex items-center gap-2 text-slate/50 font-mono text-xs">
+                <div className="w-3 h-3 border-2 border-orange border-t-transparent rounded-full animate-spin" />
+                Executing...
+              </div>
+            )}
+          </button>
+
+          {/* Output Content */}
+          {!state.outputCollapsed && (
+            <div className="p-4 bg-bone/30">
+              {state.outputs.map((output, i) => (
+                <CellOutputComponent key={i} output={output} widgets={widgets} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Cell output renderer
+ */
+interface CellOutputComponentProps extends WithKey {
+  output: CellOutput;
+  widgets: Map<string, { moduleUrl: string; model: WidgetModel }>;
+}
+
+function CellOutputComponent(props: CellOutputComponentProps) {
+  const { output, widgets } = props;
+  if (output.type === 'stdout') {
+    return (
+      <pre className="font-mono text-sm text-slate whitespace-pre-wrap mb-2">
+        {output.content}
+      </pre>
+    );
+  }
+
+  if (output.type === 'stderr') {
+    return (
+      <pre className="font-mono text-sm text-red-600 whitespace-pre-wrap mb-2 bg-red-50 p-2 rounded">
+        {output.content}
+      </pre>
+    );
+  }
+
+  if (output.type === 'result') {
+    // Check if it's a widget display marker (Widget:widgetId format without space)
+    const widgetMatch = output.content.match(/Widget:(\S+)/);
+    if (widgetMatch) {
+      const widgetId = widgetMatch[1];
+      const widget = widgets.get(widgetId);
+      if (widget) {
+        return (
+          <div className="bg-white border-2 border-slate/10 rounded-lg p-4">
+            <WidgetRenderer moduleUrl={widget.moduleUrl} model={widget.model} />
+          </div>
+        );
+      }
+    }
+
+    return (
+      <pre className="font-mono text-sm text-slate whitespace-pre-wrap mb-2">
+        {output.content}
+      </pre>
+    );
+  }
+
+  return null;
+}
+
+/**
+ * Widget renderer - loads and displays a widget module
+ */
+function WidgetRenderer({ moduleUrl, model }: { moduleUrl: string; model: WidgetModel }) {
+  const [Widget, setWidget] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadWidget() {
+      try {
+        const mod = await import(/* @vite-ignore */ moduleUrl);
+        const fn = mod?.default ?? mod;
+        
+        if (typeof fn !== 'function') {
+          throw new Error('Widget module must export a default function');
+        }
+
+        if (!cancelled) {
+          setWidget(() => fn);
+          setError(null);
+        }
+      } catch (e: any) {
+        console.error('Widget load error:', e);
+        if (!cancelled) {
+          setError(e.message || 'Failed to load widget');
+        }
+      }
+    }
+
+    loadWidget();
+
+    return () => { cancelled = true; };
+  }, [moduleUrl]);
+
+  if (error) {
+    return (
+      <div className="p-4 bg-red-50 border-2 border-red-200 rounded text-red-700 font-mono text-xs">
+        Error loading widget: {error}
+      </div>
+    );
+  }
+
+  if (!Widget) {
+    return (
+      <div className="p-4 text-slate/50 font-mono text-xs animate-pulse">
+        Loading widget...
+      </div>
+    );
+  }
+
+  return <Widget model={model} html={html} React={React} />;
+}

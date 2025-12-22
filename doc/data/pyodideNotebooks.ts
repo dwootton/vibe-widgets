@@ -1,0 +1,530 @@
+import type { NotebookCell } from '../components/PyodideNotebook';
+
+/**
+ * Cross-widget interactions demo notebook
+ * Showcases scatter plot → bar chart filtering
+ */
+export const CROSS_WIDGET_NOTEBOOK: NotebookCell[] = [
+  {
+    type: 'markdown',
+    content: `
+      <h2>Cross-Widget Interactions</h2>
+      <p class="text-lg text-slate/70">
+        This demo shows how widgets can communicate with each other. 
+        Select points in the scatter plot and watch the bar chart update automatically!
+      </p>
+    `,
+  },
+  {
+    type: 'code',
+    content: `import vibe_widget as vw
+import pandas as pd
+
+vw.models()`,
+    defaultCollapsed: true,
+    label: 'Setup',
+  },
+  {
+    type: 'code',
+    content: `# Configure (demo mode - no actual LLM calls)
+vw.config(
+    model="google/gemini-3-flash-preview",
+    api_key="demo-key"
+)`,
+    defaultCollapsed: true,
+    label: 'Config',
+  },
+  {
+    type: 'code',
+    content: `# Load Seattle weather data
+# (data is pre-loaded from /testdata/seattle-weather.csv)
+print(f"Weather data loaded: {len(data)} rows")
+print(f"Columns: {list(data.columns)}")
+data.head(3)`,
+    defaultCollapsed: true,
+    label: 'Load Data',
+  },
+  {
+    type: 'markdown',
+    content: `
+      <h3>Widget 1: Scatter Plot with Brush Selection</h3>
+      <p>
+        This widget <strong>exports</strong> <code>selected_indices</code> - 
+        when you brush-select points, it updates the shared variable.
+      </p>
+    `,
+    defaultCollapsed: true,
+  },
+  {
+    type: 'code',
+    content: `# Create scatter plot that exports selected indices
+scatter = vw.create(
+    description="temperature across days in Seattle, colored by weather condition",
+    data=data,
+    exports=vw.exports(
+        selected_indices=vw.export("List of selected point indices")
+    ),
+)
+
+scatter`,
+    label: 'Scatter Plot',
+  },
+  {
+    type: 'markdown',
+    content: `
+      <h3>Widget 2: Bar Chart (Linked)</h3>
+      <p>
+        This widget <strong>imports</strong> <code>selected_indices</code> from the scatter plot.
+        When the selection changes, it automatically updates to show filtered counts.
+      </p>
+    `,
+    defaultCollapsed: true,
+  },
+  {
+    type: 'code',
+    content: `# Create bar chart that imports selected_indices
+bars = vw.create(
+    "horizontal bar chart of weather conditions' count for selected points",
+    vw.imports(
+        data,
+        selected_indices=scatter.selected_indices
+    ),
+)
+
+bars`,
+    label: '📊 Bar Chart',
+  },
+  {
+    type: 'markdown',
+    content: `
+      <h3>How It Works</h3>
+      <pre class="bg-slate/5 p-4 rounded-lg overflow-x-auto"><code class="text-sm"># Widget A exports a trait
+scatter = vw.create(
+    ...,
+    exports=vw.exports(
+        selected_indices=vw.export("description")
+    )
+)
+
+# Widget B imports that trait
+bars = vw.create(
+    ...,
+    vw.imports(
+        df,
+        selected_indices=scatter.selected_indices
+    )
+)</code></pre>
+      <p class="mt-4">
+        Vibe Widget automatically creates bidirectional links using traitlets,
+        so changes flow between widgets in real-time!
+      </p>
+    `,
+    defaultCollapsed: true,
+  },
+];
+
+/**
+ * Tic-Tac-Toe AI demo notebook
+ * Showcases Python ML + widget interactions
+ */
+export const TICTACTOE_NOTEBOOK: NotebookCell[] = [
+  {
+    type: 'markdown',
+    content: `
+      <h2>Tic-Tac-Toe AI Demo</h2>
+      <p class="text-lg text-slate/70">
+        Play against a machine learning AI! The model is trained on thousands of games
+        using scikit-learn's GradientBoostingClassifier.
+      </p>
+    `,
+  },
+  {
+    type: 'code',
+    content: `import vibe_widget as vw
+import pandas as pd
+import numpy as np
+from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.model_selection import train_test_split
+
+vw.config(model="google/gemini-3-flash-preview", api_key="demo")`,
+    defaultCollapsed: true,
+    label: 'Setup',
+  },
+  {
+    type: 'code',
+    content: `# Check loaded training data
+print(f"Loaded X_moves: {len(x_moves_df)} moves")
+print(f"Loaded O_moves: {len(o_moves_df)} moves")
+print(f"Columns: {list(x_moves_df.columns[:10])}...")`,
+    defaultCollapsed: true,
+    label: 'Data Check',
+  },
+  {
+    type: 'markdown',
+    content: `
+      <h3>Training the AI</h3>
+      <p>We train two models - one for predicting rows and one for columns.</p>
+    `,
+    defaultCollapsed: true,
+  },
+  {
+    type: 'code',
+    content: `# Feature columns (board state encoding)
+feature_cols = ['00-1', '00-2', '01-1', '01-2', '02-1', '02-2', 
+                '10-1', '10-2', '11-1', '11-2', '12-1', '12-2', 
+                '20-1', '20-2', '21-1', '21-2', '22-1', '22-2']
+
+print("Training AI models...")
+
+# Train on O moves (AI plays O)
+O_features = o_moves_df[feature_cols]
+O_move_I = o_moves_df['move_I']
+O_move_J = o_moves_df['move_J']
+
+# Split for evaluation
+O_train_feat, O_test_feat, O_train_I, O_test_I, O_train_J, O_test_J = train_test_split(
+    O_features, O_move_I, O_move_J, test_size=0.15, random_state=42
+)
+
+print(f"Training samples: {len(O_train_feat)}")
+
+# Train row predictor
+lr_I_O = GradientBoostingClassifier(n_estimators=50, max_depth=3, random_state=42)
+lr_I_O.fit(O_train_feat, O_train_I)
+
+# Train column predictor
+lr_J_O = GradientBoostingClassifier(n_estimators=50, max_depth=3, random_state=42)
+lr_J_O.fit(O_train_feat, O_train_J)
+
+print(f"Row accuracy: {lr_I_O.score(O_test_feat, O_test_I):.2%}")
+print(f"Column accuracy: {lr_J_O.score(O_test_feat, O_test_J):.2%}")
+print("AI ready!")`,
+    defaultCollapsed: true,
+    label: 'Train AI',
+  },
+  {
+    type: 'code',
+    content: `# Helper functions for AI
+def board_to_features(board_list):
+    """Convert board to feature vector"""
+    features = []
+    for cell in board_list:
+        if cell == 'o':
+            features.extend([1.0, 0.0])
+        elif cell == 'x':
+            features.extend([0.0, 1.0])
+        else:
+            features.extend([0.0, 0.0])
+    return features
+
+def get_empty_positions(board_list):
+    """Get empty positions"""
+    return [(i // 3, i % 3) for i, cell in enumerate(board_list) if cell == 'b']
+
+def predict_best_move(board_state):
+    """Predict best move for AI (O player)"""
+    empty = get_empty_positions(board_state)
+    if not empty:
+        return None
+    
+    features = board_to_features(board_state)
+    X_input = pd.DataFrame([features], columns=feature_cols)
+    
+    I_probs = lr_I_O.predict_proba(X_input)
+    J_probs = lr_J_O.predict_proba(X_input)
+    
+    prob_matrix = np.dot(I_probs.T, J_probs)
+    
+    best_score = -1
+    best_move = None
+    for row, col in empty:
+        if prob_matrix[row, col] > best_score:
+            best_score = prob_matrix[row, col]
+            best_move = (row, col)
+    
+    return best_move
+
+print("AI functions ready!")`,
+    defaultCollapsed: true,
+    label: 'AI Functions',
+  },
+  {
+    type: 'markdown',
+    content: `
+      <h3>The Game Board</h3>
+      <p>Click cells to play as <strong style="color: #007bff">X (Blue)</strong>. The AI will respond as <strong style="color: #dc3545">O (Red)</strong>!</p>
+    `,
+  },
+  {
+    type: 'code',
+    content: `# Create the game board widget
+game_board = vw.create(
+    """Interactive Tic-Tac-Toe game board
+    - Human plays X, AI plays O
+    - Click cells to make moves
+    - Exports board_state, current_turn, game_over
+    - Imports ai_move to receive AI responses
+    """,
+    exports={
+        "board_state": "9-element array of 'x', 'o', or 'b'",
+        "game_over": "boolean",
+        "current_turn": "'x' or 'o'"
+    }
+)
+
+game_board`,
+    label: 'Game Board',
+  },
+  {
+    type: 'code',
+    content: `# AI controller - responds to game state changes
+def make_ai_move(change):
+    """Called when turn changes to AI"""
+    board_state = game_board.board_state
+    current_turn = game_board.current_turn
+    game_over = game_board.game_over
+    
+    # Only respond if it's AI's turn
+    if current_turn != 'o' or game_over:
+        return
+    
+    if not board_state:
+        return
+    
+    board_list = list(board_state)
+    move = predict_best_move(board_list)
+    
+    if move:
+        print(f"AI plays at row={move[0]}, col={move[1]}")
+        game_board.ai_move = {"row": int(move[0]), "col": int(move[1])}
+
+# Watch for turn changes
+game_board.observe(make_ai_move, names=['current_turn'])
+print("AI controller active - click a cell to make your move!")`,
+    label: 'AI Controller',
+  },
+];
+
+/**
+ * PDF & Web Extraction demo notebook
+ * Shows how vibe_widget can handle PDF tables and web scraping
+ */
+export const PDF_WEB_NOTEBOOK: NotebookCell[] = [
+  {
+    type: 'markdown',
+    content: `
+      <h2>PDF & Web Data Extraction</h2>
+      <p class="text-lg text-slate/70">
+        Vibe Widget can automatically extract data from PDFs and websites, 
+        then create beautiful interactive visualizations!
+      </p>
+    `,
+  },
+  {
+    type: 'code',
+    content: `import vibe_widget as vw
+import pandas as pd
+
+vw.config(
+    model="google/gemini-3-flash-preview",
+    api_key="demo-key"
+)`,
+    defaultCollapsed: true,
+    label: 'Setup',
+  },
+  {
+    type: 'markdown',
+    content: `
+      <h3>Example 1: Solar System from PDF</h3>
+      <p>
+        Extract planetary data from a PDF and create an interactive 3D visualization!
+        Click on planets to select them.
+      </p>
+    `,
+  },
+  {
+    type: 'code',
+    content: `# Load planet data (extracted from PDF)
+print(f"Planet data: {len(planets_df)} planets")
+print(f"Columns: {list(planets_df.columns)}")
+planets_df`,
+    defaultCollapsed: true,
+    label: 'Planet Data',
+  },
+  {
+    type: 'code',
+    content: `# Create solar system widget
+solar_system = vw.create(
+    "scatter plot of planets showing distance_from_sun vs diameter, with size by mass",
+    data=planets_df,
+    exports={
+        "selected_planet": "name of the currently selected planet"
+    }
+)
+
+solar_system`,
+    label: 'Solar System',
+  },
+  {
+    type: 'markdown',
+    content: `
+      <h3>Example 2: Web Data Visualization</h3>
+      <p>
+        Visualize data scraped from websites - here we show Hacker News style data!
+      </p>
+    `,
+  },
+  {
+    type: 'code',
+    content: `# Load HN-style data
+print(f"Stories loaded: {len(hn_df)} items")
+hn_df.head(5)`,
+    defaultCollapsed: true,
+    label: 'HN Data',
+  },
+  {
+    type: 'code',
+    content: `# Create bar chart of story scores
+hn_chart = vw.create(
+    "horizontal bar chart showing top stories by score, with interactive hover",
+    data=hn_df
+)
+
+hn_chart`,
+    label: 'HN Scores',
+  },
+  {
+    type: 'markdown',
+    content: `
+      <h3>How It Works</h3>
+      <div class="bg-slate/5 p-4 rounded-lg">
+        <p class="font-semibold mb-2">Behind the scenes, Vibe Widget:</p>
+        <ol class="list-decimal list-inside space-y-1 text-sm">
+          <li>Detects the data source type (PDF, URL, DataFrame)</li>
+          <li>Extracts tables/content using specialized parsers</li>
+          <li>Generates custom React+D3 visualization code</li>
+          <li>Validates and displays the interactive widget</li>
+        </ol>
+      </div>
+    `,
+    defaultCollapsed: true,
+  },
+];
+
+/**
+ * Widget Revision demo notebook
+ * Shows how to iteratively refine widgets with vw.revise()
+ */
+export const REVISE_NOTEBOOK: NotebookCell[] = [
+  {
+    type: 'markdown',
+    content: `
+      <h2>Widget Revision with <code>vw.revise()</code></h2>
+      <p class="text-lg text-slate/70">
+        Iteratively refine widgets by building upon existing code.
+        Watch how a simple chart transforms into an interactive dashboard!
+      </p>
+    `,
+  },
+  {
+    type: 'code',
+    content: `import vibe_widget as vw
+import pandas as pd
+
+vw.config(
+    model="google/gemini-3-flash-preview",
+    api_key="demo-key"
+)`,
+    defaultCollapsed: true,
+    label: 'Setup',
+  },
+  {
+    type: 'code',
+    content: `# Load COVID-19 day-wise data
+print(f"COVID data loaded: {len(covid_df)} rows")
+print(f"Columns: {list(covid_df.columns)}")
+covid_df.head(3)`,
+    defaultCollapsed: true,
+    label: 'Load Data',
+  },
+  {
+    type: 'markdown',
+    content: `
+      <h3>Step 1: Basic Line Chart</h3>
+      <p>Start with a simple line chart showing COVID-19 trends over time.</p>
+    `,
+  },
+  {
+    type: 'code',
+    content: `# Create basic line chart
+timeline = vw.create(
+    "line chart showing Confirmed, Deaths, and Recovered cases over time",
+    covid_df
+)
+
+timeline`,
+    label: 'Basic Chart',
+  },
+  {
+    type: 'markdown',
+    content: `
+      <h3>Step 2: Enhanced Version</h3>
+      <p>Use <code>vw.revise()</code> to add interactive hover crosshair.</p>
+    `,
+  },
+  {
+    type: 'code',
+    content: `# Revise to add interactive hover
+timeline_v2 = vw.revise(
+    "add vertical dashed line when hovering, highlight crossed data points",
+    timeline,
+    data=covid_df
+)
+
+timeline_v2`,
+    label: 'Enhanced Chart',
+  },
+  {
+    type: 'markdown',
+    content: `
+      <h3>How Revision Works</h3>
+      <pre class="bg-slate/5 p-4 rounded-lg overflow-x-auto text-sm"><code># Create initial widget
+chart = vw.create("scatter plot of data", df)
+
+# Refine it with revise()
+chart_v2 = vw.revise(
+    "add hover tooltips and color by category",
+    chart,  # Pass the original widget
+    data=df  # Optionally pass updated data
+)
+
+# Keep refining!
+chart_v3 = vw.revise(
+    "add zoom and pan controls",
+    chart_v2
+)</code></pre>
+    `,
+    defaultCollapsed: true,
+  },
+];
+
+/**
+ * Data files to preload for each notebook
+ */
+export const WEATHER_DATA_FILES = [
+  { url: '/testdata/seattle-weather.csv', varName: 'data' },
+];
+
+export const TICTACTOE_DATA_FILES = [
+  { url: '/testdata/X_moves.csv', varName: 'x_moves_df' },
+  { url: '/testdata/O_moves.csv', varName: 'o_moves_df' },
+];
+
+export const PDF_WEB_DATA_FILES = [
+  { url: '/testdata/planets.csv', varName: 'planets_df' },
+  { url: '/testdata/hn_stories.json', varName: 'hn_df', type: 'json' },
+];
+
+export const REVISE_DATA_FILES = [
+  { url: '/testdata/day_wise.csv', varName: 'covid_df' },
+];
