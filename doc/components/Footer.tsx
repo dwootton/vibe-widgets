@@ -33,7 +33,7 @@ const Footer = () => {
             © {new Date().getFullYear()} Vibe Widget. MIT License.
          </div>
          <div className="flex items-center gap-2">
-            Made with <Heart className="w-3 h-3 text-orange" /> by dwootton
+            Made with <Heart className="w-3 h-3 text-orange" /> by dwootton and ryenyen2
          </div>
       </div>
     </footer>
