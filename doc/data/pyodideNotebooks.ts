@@ -4,6 +4,238 @@ import type { NotebookCell } from '../components/PyodideNotebook';
  * Cross-widget interactions demo notebook
  * Showcases scatter plot → bar chart filtering
  */
+/**
+ * PDF & Web Data Extraction demo notebook
+ * Showcases extracting data from PDFs and web pages
+ */
+export const PDF_WEB_NOTEBOOK: NotebookCell[] = [
+  {
+    type: 'markdown',
+    content: `
+      <h2>PDF & Web Data Extraction</h2>
+      <p class="text-lg text-slate/70">
+        Vibe Widget can extract data from PDFs and web pages, then create interactive visualizations.
+        This demo shows two examples: a 3D solar system from PDF data and a Hacker News clone from web scraping.
+      </p>
+    `,
+  },
+  {
+    type: 'code',
+    content: `import vibe_widget as vw
+import pandas as pd
+
+vw.models()`,
+    defaultCollapsed: true,
+    label: 'Setup',
+  },
+  {
+    type: 'code',
+    content: `# Configure (demo mode - no actual LLM calls)
+vw.config(
+    model="google/gemini-3-flash-preview",
+    api_key="demo-key"
+)`,
+    defaultCollapsed: true,
+    label: 'Config',
+  },
+  {
+    type: 'markdown',
+    content: `
+      <h3>Example 1: 3D Solar System from PDF</h3>
+      <p>
+        Extract planet data from a PDF and visualize it as an interactive 3D solar system.
+        Click on planets to select them!
+      </p>
+    `,
+  },
+  {
+    type: 'code',
+    content: `# Create 3D Solar System widget
+solar_system = vw.create(
+    """3D solar system using Three.js showing planets orbiting the sun.
+    - Create spheres for each planet with relative sizes
+    - Position planets at their relative distances from sun
+    - Make planets clickable to select them
+    - Highlight selected planet with a bright glow
+    - Add orbit controls for rotation
+    - Default selection: Earth
+    - Export the selected planet name
+    """,
+    data="../testdata/ellipseplanet.pdf",
+    exports=vw.exports(
+        selected_planet=vw.export("name of the currently selected planet")
+    ),
+)
+
+solar_system`,
+    label: '3D Solar System',
+  },
+  {
+    type: 'markdown',
+    content: `
+      <h3>Example 2: Hacker News Clone from Web Scraping</h3>
+      <p>
+        Scrape Hacker News stories and display them in an interactive interface.
+        Filter by score, search by keywords, and sort by different criteria!
+      </p>
+    `,
+  },
+  {
+    type: 'code',
+    content: `# Create interactive Hacker News widget
+hn_clone = vw.create(
+    """Create an interactive Hacker News clone widget with:
+    - Display stories in a clean, modern layout
+    - Show story title (clickable link), author, score, comments count
+    - Sort stories by score (highest first) or time (newest first)
+    - Filter stories by minimum score threshold using a slider
+    - Highlight top stories (score > 100) with an orange accent
+    - Add a search box to filter stories by title keywords
+    - Use modern, minimalist design with orange (#ff6600) accents
+    """,
+    data="https://news.ycombinator.com",
+)
+
+hn_clone`,
+    label: 'Hacker News Clone',
+  },
+  {
+    type: 'markdown',
+    content: `
+      <h3>How It Works</h3>
+      <pre class="bg-slate/5 p-4 rounded-lg overflow-x-auto"><code class="text-sm"># PDF Extraction
+solar_system = vw.create(
+    description="3D visualization...",
+    data="../testdata/planets.pdf",  # PDF path
+    exports=vw.exports(
+        selected_planet=vw.export("selected planet name")
+    )
+)
+
+# Web Scraping
+hn_clone = vw.create(
+    description="Hacker News clone...",
+    data="https://news.ycombinator.com",  # URL
+)
+      </code></pre>
+      <p class="mt-4">
+        Vibe Widget automatically detects the data type (PDF, URL, CSV, etc.) and
+        handles extraction, parsing, and visualization generation!
+      </p>
+    `,
+    defaultCollapsed: true,
+  },
+];
+
+/**
+ * Widget Revision demo notebook
+ * Showcases iterative refinement of widgets
+ */
+export const REVISE_NOTEBOOK: NotebookCell[] = [
+  {
+    type: 'markdown',
+    content: `
+      <h2>Widget Revision Demo</h2>
+      <p class="text-lg text-slate/70">
+        Start with a basic chart, then refine it iteratively using <code>vw.revise()</code>.
+        Watch how we add interactive features step by step!
+      </p>
+    `,
+  },
+  {
+    type: 'code',
+    content: `import vibe_widget as vw
+import pandas as pd
+
+vw.models()`,
+    defaultCollapsed: true,
+    label: 'Setup',
+  },
+  {
+    type: 'code',
+    content: `# Configure (demo mode)
+vw.config(
+    model="google/gemini-3-flash-preview",
+    api_key="demo-key"
+)`,
+    defaultCollapsed: true,
+    label: 'Config',
+  },
+  {
+    type: 'code',
+    content: `# Load COVID-19 data
+print(f"COVID-19 data loaded: {len(covid_df)} days")
+print(f"Columns: {list(covid_df.columns)}")
+covid_df.head(3)`,
+    defaultCollapsed: true,
+    label: 'Load Data',
+  },
+  {
+    type: 'markdown',
+    content: `
+      <h3>Step 1: Basic Line Chart</h3>
+      <p>Create a simple line chart showing COVID-19 trends over time.</p>
+    `,
+  },
+  {
+    type: 'code',
+    content: `# Create basic line chart
+timeline = vw.create(
+    "line chart showing confirmed, deaths, recovered over time",
+    data=covid_df
+)
+
+timeline`,
+    label: 'Basic Chart',
+  },
+  {
+    type: 'markdown',
+    content: `
+      <h3>Step 2: Add Interactive Hover</h3>
+      <p>Use <code>vw.revise()</code> to add a vertical dashed line when hovering.</p>
+    `,
+  },
+  {
+    type: 'code',
+    content: `# Revise to add interactive hover crosshair
+timeline_v2 = vw.revise(
+    "add vertical dashed line when user hovering, highlight crossed data points",
+    timeline,
+    data=covid_df
+)
+
+timeline_v2`,
+    label: 'Enhanced Chart',
+  },
+  {
+    type: 'markdown',
+    content: `
+      <h3>How Revision Works</h3>
+      <pre class="bg-slate/5 p-4 rounded-lg overflow-x-auto text-sm"><code># Create initial widget
+chart = vw.create("scatter plot of data", df)
+
+# Refine it with revise()
+chart_v2 = vw.revise(
+    "add hover tooltips and color by category",
+    chart,  # Pass the original widget
+    data=df  # Optionally pass updated data
+)
+
+# Keep refining!
+chart_v3 = vw.revise(
+    "add zoom and pan controls",
+    chart_v2
+)
+      </code></pre>
+      <p class="mt-4">
+        Each revision builds on the previous version, maintaining context
+        while adding new features. This allows for rapid iterative development!
+      </p>
+    `,
+    defaultCollapsed: true,
+  },
+];
+
 export const CROSS_WIDGET_NOTEBOOK: NotebookCell[] = [
   {
     type: 'markdown',
@@ -367,7 +599,7 @@ def predict_best_move(board_state, player='o'):
   },
   {
     type: 'code',
-    content: `# Create the game board widget
+    content: `# Create the game board widget with proper exports
 game_board = vw.create(
     """Interactive Tic-Tac-Toe game board
     - Human plays X, AI plays O
@@ -375,14 +607,11 @@ game_board = vw.create(
     - Exports board_state, current_turn, game_over
     - Imports ai_move to receive AI responses
     """,
-    exports={
-        "board_state": "9-element array of 'x', 'o', or 'b'",
-        "game_over": "boolean",
-        "current_turn": "'x' or 'o'"
-    },
-    imports={
-        "ai_move": "object {row: number, col: number} for AI move placement"
-    },
+    exports=vw.exports(
+        board_state=vw.export("9-element array of 'x', 'o', or 'b'"),
+        game_over=vw.export("boolean"),
+        current_turn=vw.export("'x' or 'o'")
+    ),
 )
 
 game_board`,
@@ -390,8 +619,20 @@ game_board`,
   },
   {
     type: 'code',
-    content: `# AI controller - responds to game state changes
+    content: `# Create AI controller widget that computes moves
 import time
+
+# This widget receives board state and computes AI moves
+ai_controller = vw.create(
+    """AI Move Controller
+    - Imports board_state and current_turn from game board
+    - Computes optimal AI move using ML model
+    - Exports ai_move to trigger board update
+    """,
+    exports=vw.exports(
+        ai_move=vw.export("object {row: number, col: number}")
+    ),
+)
 
 def make_ai_move(change):
     """Called when board_state or current_turn changes"""
@@ -426,8 +667,8 @@ def make_ai_move(change):
         
         if move:
             print(f"AI (O) plays at position ({move[0]}, {move[1]})")
-            # Send move back to widget
-            game_board.ai_move = {"row": int(move[0]), "col": int(move[1])}
+            # Send move to AI controller which will notify game board
+            ai_controller.ai_move = {"row": int(move[0]), "col": int(move[1])}
         else:
             print("No valid move found")
             
@@ -437,211 +678,26 @@ def make_ai_move(change):
         traceback.print_exc()
 
 # Observe changes to trigger AI moves
-game_board.observe(make_ai_move, names=['current_turn'])`,
+game_board.observe(make_ai_move, names=['current_turn'])
+
+# Link AI controller output to game board input
+game_board_linked = vw.create(
+    """Game board with AI integration
+    - Same as game_board but imports ai_move from AI controller
+    """,
+    exports=vw.exports(
+        board_state=vw.export("9-element array"),
+        game_over=vw.export("boolean"),
+        current_turn=vw.export("'x' or 'o'")
+    ),
+    imports=vw.imports(
+        ai_move=ai_controller
+    ),
+)
+
+print("AI controller linked to game board!")
+game_board`,
     label: 'AI Controller',
-  },
-];
-
-/**
- * PDF & Web Extraction demo notebook
- * Shows how vibe_widget can handle PDF tables and web scraping
- */
-export const PDF_WEB_NOTEBOOK: NotebookCell[] = [
-  {
-    type: 'markdown',
-    content: `
-      <h2>PDF & Web Data Extraction</h2>
-      <p class="text-lg text-slate/70">
-        Vibe Widget can automatically extract data from PDFs and websites, 
-        then create beautiful interactive visualizations!
-      </p>
-    `,
-  },
-  {
-    type: 'code',
-    content: `import vibe_widget as vw
-import pandas as pd
-
-vw.config(
-    model="google/gemini-3-flash-preview",
-    api_key="demo-key"
-)`,
-    defaultCollapsed: true,
-    label: 'Setup',
-  },
-  {
-    type: 'markdown',
-    content: `
-      <h3>Example 1: Solar System from PDF</h3>
-      <p>
-        Extract planetary data from a PDF and create an interactive 3D visualization!
-        Click on planets to select them.
-      </p>
-    `,
-  },
-  {
-    type: 'code',
-    content: `# Load planet data (extracted from PDF)
-print(f"Planet data: {len(planets_df)} planets")
-print(f"Columns: {list(planets_df.columns)}")
-planets_df`,
-    defaultCollapsed: true,
-    label: 'Planet Data',
-  },
-  {
-    type: 'code',
-    content: `# Create solar system widget
-solar_system = vw.create(
-    "scatter plot of planets showing distance_from_sun vs diameter, with size by mass",
-    data=planets_df,
-    exports={
-        "selected_planet": "name of the currently selected planet"
-    }
-)
-
-solar_system`,
-    label: 'Solar System',
-  },
-  {
-    type: 'markdown',
-    content: `
-      <h3>Example 2: Web Data Visualization</h3>
-      <p>
-        Visualize data scraped from websites - here we show Hacker News style data!
-      </p>
-    `,
-  },
-  {
-    type: 'code',
-    content: `# Load HN-style data
-print(f"Stories loaded: {len(hn_df)} items")
-hn_df.head(5)`,
-    defaultCollapsed: true,
-    label: 'HN Data',
-  },
-  {
-    type: 'code',
-    content: `# Create bar chart of story scores
-hn_chart = vw.create(
-    "horizontal bar chart showing top stories by score, with interactive hover",
-    data=hn_df
-)
-
-hn_chart`,
-    label: 'HN Scores',
-  },
-  {
-    type: 'markdown',
-    content: `
-      <h3>How It Works</h3>
-      <div class="bg-slate/5 p-4 rounded-lg">
-        <p class="font-semibold mb-2">Behind the scenes, Vibe Widget:</p>
-        <ol class="list-decimal list-inside space-y-1 text-sm">
-          <li>Detects the data source type (PDF, URL, DataFrame)</li>
-          <li>Extracts tables/content using specialized parsers</li>
-          <li>Generates custom React+D3 visualization code</li>
-          <li>Validates and displays the interactive widget</li>
-        </ol>
-      </div>
-    `,
-    defaultCollapsed: true,
-  },
-];
-
-/**
- * Widget Revision demo notebook
- * Shows how to iteratively refine widgets with vw.revise()
- */
-export const REVISE_NOTEBOOK: NotebookCell[] = [
-  {
-    type: 'markdown',
-    content: `
-      <h2>Widget Revision with <code>vw.revise()</code></h2>
-      <p class="text-lg text-slate/70">
-        Iteratively refine widgets by building upon existing code.
-        Watch how a simple chart transforms into an interactive dashboard!
-      </p>
-    `,
-  },
-  {
-    type: 'code',
-    content: `import vibe_widget as vw
-import pandas as pd
-
-vw.config(
-    model="google/gemini-3-flash-preview",
-    api_key="demo-key"
-)`,
-    defaultCollapsed: true,
-    label: 'Setup',
-  },
-  {
-    type: 'code',
-    content: `# Load COVID-19 day-wise data
-print(f"COVID data loaded: {len(covid_df)} rows")
-print(f"Columns: {list(covid_df.columns)}")
-covid_df.head(3)`,
-    defaultCollapsed: true,
-    label: 'Load Data',
-  },
-  {
-    type: 'markdown',
-    content: `
-      <h3>Step 1: Basic Line Chart</h3>
-      <p>Start with a simple line chart showing COVID-19 trends over time.</p>
-    `,
-  },
-  {
-    type: 'code',
-    content: `# Create basic line chart
-timeline = vw.create(
-    "line chart showing Confirmed, Deaths, and Recovered cases over time",
-    covid_df
-)
-
-timeline`,
-    label: 'Basic Chart',
-  },
-  {
-    type: 'markdown',
-    content: `
-      <h3>Step 2: Enhanced Version</h3>
-      <p>Use <code>vw.revise()</code> to add interactive hover crosshair.</p>
-    `,
-  },
-  {
-    type: 'code',
-    content: `# Revise to add interactive hover
-timeline_v2 = vw.revise(
-    "add vertical dashed line when hovering, highlight crossed data points",
-    timeline,
-    data=covid_df
-)
-
-timeline_v2`,
-    label: 'Enhanced Chart',
-  },
-  {
-    type: 'markdown',
-    content: `
-      <h3>How Revision Works</h3>
-      <pre class="bg-slate/5 p-4 rounded-lg overflow-x-auto text-sm"><code># Create initial widget
-chart = vw.create("scatter plot of data", df)
-
-# Refine it with revise()
-chart_v2 = vw.revise(
-    "add hover tooltips and color by category",
-    chart,  # Pass the original widget
-    data=df  # Optionally pass updated data
-)
-
-# Keep refining!
-chart_v3 = vw.revise(
-    "add zoom and pan controls",
-    chart_v2
-)
-    `,
-    defaultCollapsed: true,
   },
 ];
 
@@ -672,3 +728,13 @@ export const ALL_DATA_FILES = [
   ...PDF_WEB_DATA_FILES,
   ...REVISE_DATA_FILES,
 ];
+
+/**
+ * Map notebook name to its required data files
+ */
+export const NOTEBOOK_DATA_MAP: Record<string, typeof WEATHER_DATA_FILES> = {
+  'cross-widget': WEATHER_DATA_FILES,
+  'tictactoe': TICTACTOE_DATA_FILES,
+  'pdf-web': PDF_WEB_DATA_FILES,
+  'revise': REVISE_DATA_FILES,
+};

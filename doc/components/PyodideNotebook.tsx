@@ -146,7 +146,8 @@ interface CellState {
 interface PyodideNotebookProps {
   cells: NotebookCell[];
   title?: string;
-  dataFiles?: { url: string; varName: string }[];
+  dataFiles?: { url: string; varName: string; type?: string }[];
+  notebookKey?: string; // Unique key to identify the notebook for data loading
 }
 
 // Helper type for components used in .map()
@@ -160,7 +161,7 @@ interface WithKey { key?: Key; }
  * - Cross-widget reactivity via traitlets simulation
  * - Pre-generated widgets load from /examples
  */
-export default function PyodideNotebook({ cells, title, dataFiles = [] }: PyodideNotebookProps) {
+export default function PyodideNotebook({ cells, title, dataFiles = [], notebookKey }: PyodideNotebookProps) {
   const [pyodideState, setPyodideState] = useState<PyodideState>({
     ready: false,
     loading: false,
@@ -177,7 +178,8 @@ export default function PyodideNotebook({ cells, title, dataFiles = [] }: Pyodid
     }))
   );
   const [widgets, setWidgets] = useState<Map<string, { moduleUrl: string; model: WidgetModel }>>(new Map());
-  const dataLoadedRef = useRef(false);
+  const loadedDataFilesRef = useRef<Set<string>>(new Set());
+  const currentNotebookKeyRef = useRef<string | undefined>(undefined);
 
   // Subscribe to Pyodide state changes
   useEffect(() => {
@@ -200,16 +202,31 @@ export default function PyodideNotebook({ cells, title, dataFiles = [] }: Pyodid
     pyodideRuntime.load().catch(console.error);
   }, []);
 
-  // Load data files when Pyodide is ready
+  // Load data files when Pyodide is ready or when notebook changes
   useEffect(() => {
-    if (!pyodideState.ready || dataLoadedRef.current || dataFiles.length === 0) return;
+    if (!pyodideState.ready || dataFiles.length === 0) return;
 
-    dataLoadedRef.current = true;
+    // Check if we need to load new data files
+    const notebookChanged = currentNotebookKeyRef.current !== notebookKey;
+    if (notebookChanged) {
+      currentNotebookKeyRef.current = notebookKey;
+    }
 
+    // Load only new files that haven't been loaded yet
+    const filesToLoad = dataFiles.filter(
+      (file: any) => !loadedDataFilesRef.current.has(file.url)
+    );
+
+    if (filesToLoad.length === 0 && !notebookChanged) return;
+
+    // Load new data files without restarting kernel
     Promise.all(
-      dataFiles.map((file: any) => pyodideRuntime.loadDataFile(file.url, file.varName, file.type))
+      filesToLoad.map((file: any) => {
+        loadedDataFilesRef.current.add(file.url);
+        return pyodideRuntime.loadDataFile(file.url, file.varName, file.type);
+      })
     ).catch(console.error);
-  }, [pyodideState.ready, dataFiles]);
+  }, [pyodideState.ready, dataFiles, notebookKey]);
 
   const runCell = useCallback(async (index: number) => {
     if (!pyodideState.ready) return;

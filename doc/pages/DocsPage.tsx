@@ -97,28 +97,32 @@ const DocsPage = () => {
                         <PyodideNotebook 
                             cells={CROSS_WIDGET_NOTEBOOK}
                             title="Cross-Widget Interactions"
-                            dataFiles={ALL_DATA_FILES}
+                            dataFiles={WEATHER_DATA_FILES}
+                            notebookKey="cross-widget"
                         />
                     } />
                     <Route path="/examples/tictactoe" element={
                         <PyodideNotebook 
                             cells={TICTACTOE_NOTEBOOK}
                             title="Tic-Tac-Toe AI"
-                            dataFiles={ALL_DATA_FILES}
+                            dataFiles={TICTACTOE_DATA_FILES}
+                            notebookKey="tictactoe"
                         />
                     } />
                     <Route path="/examples/pdf-web" element={
                         <PyodideNotebook 
                             cells={PDF_WEB_NOTEBOOK}
                             title="PDF & Web Data Extraction"
-                            dataFiles={ALL_DATA_FILES}
+                            dataFiles={PDF_WEB_DATA_FILES}
+                            notebookKey="pdf-web"
                         />
                     } />
                     <Route path="/examples/revise" element={
                         <PyodideNotebook 
                             cells={REVISE_NOTEBOOK}
                             title="Widget Revision"
-                            dataFiles={ALL_DATA_FILES}
+                            dataFiles={REVISE_DATA_FILES}
+                            notebookKey="revise"
                         />
                     } />
                      <Route path="*" element={
