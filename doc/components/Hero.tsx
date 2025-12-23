@@ -305,7 +305,7 @@ const Hero = () => {
                                                 <div className="w-1.5 h-1.5 rounded-full bg-slate/20" />
                                             </div>
                                             <div className="flex-1 p-2 overflow-auto scrollbar-hide">
-                                                <DynamicWidget module={selectedExample.module} moduleUrl={selectedExample.moduleUrl} />
+                                                <DynamicWidget moduleUrl={selectedExample.moduleUrl} initialData={selectedExample.initialData} />
                                             </div>
                                         </motion.div>
                                     )}

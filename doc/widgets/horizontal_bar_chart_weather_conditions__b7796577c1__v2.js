@@ -1,5 +1,4 @@
-// Import d3 from CDN dynamically
-const d3Promise = import("https://esm.sh/d3@7");
+import * as d3 from 'd3';
 
 export const ChartHeader = ({ html, count, total }) => html`
   <div style=${{ marginBottom: '12px', fontFamily: 'sans-serif' }}>
@@ -12,14 +11,8 @@ export const ChartHeader = ({ html, count, total }) => html`
 
 export default function WeatherBarChart({ model, html, React }) {
   const [selectedIndices, setSelectedIndices] = React.useState(model.get("selected_indices") || []);
-  const [d3, setD3] = React.useState(null);
   const containerRef = React.useRef(null);
   const data = model.get("data") || [];
-
-  // Load d3 dynamically
-  React.useEffect(() => {
-    d3Promise.then(module => setD3(module));
-  }, []);
 
   React.useEffect(() => {
     const handleChange = () => {
@@ -30,7 +23,7 @@ export default function WeatherBarChart({ model, html, React }) {
   }, [model]);
 
   const processedData = React.useMemo(() => {
-    if (!data.length || !d3) return [];
+    if (!data.length) return [];
     
     const subset = selectedIndices.length > 0 
       ? selectedIndices.map(i => data[i]).filter(Boolean)
@@ -44,10 +37,10 @@ export default function WeatherBarChart({ model, html, React }) {
 
     return Array.from(counts, ([name, value]) => ({ name, value }))
       .sort((a, b) => d3.descending(a.value, b.value));
-  }, [data, selectedIndices, d3]);
+  }, [data, selectedIndices]);
 
   React.useEffect(() => {
-    if (!containerRef.current || !d3) return;
+    if (!containerRef.current) return;
 
     const margin = { top: 10, right: 30, bottom: 40, left: 80 };
     const width = 600 - margin.left - margin.right;
@@ -117,11 +110,7 @@ export default function WeatherBarChart({ model, html, React }) {
     return () => {
       d3.select(containerRef.current).selectAll("svg").remove();
     };
-  }, [processedData, d3]);
-
-  if (!d3) {
-    return html`<div style=${{ padding: '20px', textAlign: 'center', color: '#666' }}>Loading D3...</div>`;
-  }
+  }, [processedData]);
 
   return html`
     <div style=${{ 

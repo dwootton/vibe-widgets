@@ -92,7 +92,7 @@ bars = vw.create(
 )
 
 bars`,
-    label: '📊 Bar Chart',
+    label: 'Bar Chart',
   },
   {
     type: 'markdown',
@@ -278,29 +278,54 @@ game_board`,
   {
     type: 'code',
     content: `# AI controller - responds to game state changes
-def make_ai_move(change):
-    """Called when turn changes to AI"""
-    board_state = game_board.board_state
-    current_turn = game_board.current_turn
-    game_over = game_board.game_over
-    
-    # Only respond if it's AI's turn
-    if current_turn != 'o' or game_over:
-        return
-    
-    if not board_state:
-        return
-    
-    board_list = list(board_state)
-    move = predict_best_move(board_list)
-    
-    if move:
-        print(f"AI plays at row={move[0]}, col={move[1]}")
-        game_board.ai_move = {"row": int(move[0]), "col": int(move[1])}
+import time
 
-# Watch for turn changes
+def make_ai_move(change):
+    """Called when board_state or current_turn changes"""
+    # Wait a bit for better UX
+    time.sleep(0.3)
+    
+    try:
+        board_state = game_board.board_state
+        current_turn = game_board.current_turn
+        game_over = game_board.game_over
+        
+        # Only make move if it's O's turn and game is not over
+        if current_turn != 'o' or game_over or not board_state:
+            return
+        
+        # Convert board_state to list if needed
+        if isinstance(board_state, str):
+            import ast
+            board_state = ast.literal_eval(board_state)
+        
+        # Ensure it's a list
+        board_list = list(board_state)
+        
+        # Validate board format (should be 9 elements)
+        if len(board_list) != 9:
+            print(f"Invalid board state length: {len(board_list)}, expected 9")
+            return
+        
+        # The board widget exports in row-major order: [00,01,02,10,11,12,20,21,22]
+        # Our predict_best_move expects the same format
+        move = predict_best_move(board_list, player='o')
+        
+        if move:
+            print(f"AI (O) plays at position ({move[0]}, {move[1]})")
+            # Send move back to widget
+            game_board.ai_move = {"row": int(move[0]), "col": int(move[1])}
+        else:
+            print("No valid move found")
+            
+    except Exception as e:
+        print(f"Error in AI move: {e}")
+        import traceback
+        traceback.print_exc()
+
+# Observe changes to trigger AI moves
 game_board.observe(make_ai_move, names=['current_turn'])
-print("AI controller active - click a cell to make your move!")`,
+    `,
     label: 'AI Controller',
   },
 ];

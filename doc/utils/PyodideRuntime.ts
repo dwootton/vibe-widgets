@@ -320,7 +320,7 @@ def config(model=None, api_key=None):
 _WIDGET_URLS = {
     'scatter': '/examples/temperature_across_days_seattle_colored__1e5a77bc87__v1.js',
     'bars': '/examples/horizontal_bar_chart_weather_conditions__b7796577c1__v2.js',
-    'tictactoe': '/examples/interactive_tic_tac_toe_game_board_follo__ef3388891e__v1.js',
+    'tictactoe': '../widgets/interactive_tic_tac_toe_game_board_follo__ef3388891e__v1.js',
 }
 
 def _match_widget(description):

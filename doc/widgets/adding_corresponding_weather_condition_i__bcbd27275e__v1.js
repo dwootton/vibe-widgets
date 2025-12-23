@@ -1,5 +1,4 @@
-// Import d3 from CDN dynamically
-const d3Promise = import("https://esm.sh/d3@7");
+import * as d3 from "https://esm.sh/d3@7";
 
 export const ChartHeader = ({ html, count, total }) => html`
   <div style=${{ marginBottom: '12px', fontFamily: 'sans-serif' }}>
@@ -12,14 +11,16 @@ export const ChartHeader = ({ html, count, total }) => html`
 
 export default function WeatherBarChart({ model, html, React }) {
   const [selectedIndices, setSelectedIndices] = React.useState(model.get("selected_indices") || []);
-  const [d3, setD3] = React.useState(null);
   const containerRef = React.useRef(null);
   const data = model.get("data") || [];
 
-  // Load d3 dynamically
-  React.useEffect(() => {
-    d3Promise.then(module => setD3(module));
-  }, []);
+  const weatherIcons = {
+    sun: "☀️",
+    fog: "🌫️",
+    drizzle: "🌦️",
+    rain: "🌧️",
+    snow: "❄️"
+  };
 
   React.useEffect(() => {
     const handleChange = () => {
@@ -30,7 +31,7 @@ export default function WeatherBarChart({ model, html, React }) {
   }, [model]);
 
   const processedData = React.useMemo(() => {
-    if (!data.length || !d3) return [];
+    if (!data.length) return [];
     
     const subset = selectedIndices.length > 0 
       ? selectedIndices.map(i => data[i]).filter(Boolean)
@@ -44,23 +45,31 @@ export default function WeatherBarChart({ model, html, React }) {
 
     return Array.from(counts, ([name, value]) => ({ name, value }))
       .sort((a, b) => d3.descending(a.value, b.value));
-  }, [data, selectedIndices, d3]);
+  }, [data, selectedIndices]);
 
   React.useEffect(() => {
-    if (!containerRef.current || !d3) return;
+    if (!containerRef.current) return;
 
-    const margin = { top: 10, right: 30, bottom: 40, left: 80 };
+    const margin = { top: 10, right: 60, bottom: 40, left: 80 };
     const width = 600 - margin.left - margin.right;
     const height = 300 - margin.top - margin.bottom;
 
-    d3.select(containerRef.current).selectAll("svg").remove();
-
-    const svg = d3.select(containerRef.current)
-      .append("svg")
-      .attr("width", width + margin.left + margin.right)
-      .attr("height", height + margin.top + margin.bottom)
-      .append("g")
-      .attr("transform", `translate(${margin.left},${margin.top})`);
+    let svg = d3.select(containerRef.current).select("svg");
+    
+    if (svg.empty()) {
+      svg = d3.select(containerRef.current)
+        .append("svg")
+        .attr("width", width + margin.left + margin.right)
+        .attr("height", height + margin.top + margin.bottom)
+        .append("g")
+        .attr("class", "main-g")
+        .attr("transform", `translate(${margin.left},${margin.top})`);
+      
+      svg.append("g").attr("class", "x-axis").attr("transform", `translate(0,${height})`);
+      svg.append("g").attr("class", "y-axis");
+    } else {
+      svg = svg.select(".main-g");
+    }
 
     const x = d3.scaleLinear()
       .domain([0, d3.max(processedData, d => d.value) || 10])
@@ -77,13 +86,15 @@ export default function WeatherBarChart({ model, html, React }) {
       .range(["#e7ba52", "#a7a7a7", "#aec7e8", "#1f77b4", "#9467bd"])
       .unknown("#ccc");
 
-    // Axes
-    svg.append("g")
-      .attr("transform", `translate(0,${height})`)
+    const t = svg.transition().duration(750);
+
+    svg.select(".x-axis")
+      .transition(t)
       .call(d3.axisBottom(x).ticks(5))
       .call(g => g.select(".domain").remove());
 
-    svg.append("g")
+    svg.select(".y-axis")
+      .transition(t)
       .call(d3.axisLeft(y))
       .call(g => g.select(".domain").remove())
       .selectAll("text")
@@ -91,37 +102,56 @@ export default function WeatherBarChart({ model, html, React }) {
       .style("text-transform", "capitalize");
 
     // Bars
-    svg.selectAll("rect")
-      .data(processedData)
-      .join("rect")
+    svg.selectAll(".bar")
+      .data(processedData, d => d.name)
+      .join(
+        enter => enter.append("rect")
+          .attr("class", "bar")
+          .attr("x", 0)
+          .attr("y", d => y(d.name))
+          .attr("height", y.bandwidth())
+          .attr("width", 0)
+          .attr("rx", 4)
+          .attr("fill", d => colorScale(d.name)),
+        update => update,
+        exit => exit.remove()
+      )
+      .transition(t)
       .attr("y", d => y(d.name))
-      .attr("x", 0)
       .attr("width", d => x(d.value))
-      .attr("height", y.bandwidth())
-      .attr("fill", d => colorScale(d.name))
-      .attr("rx", 4);
+      .attr("height", y.bandwidth());
 
-    // Labels
+    // Icons and Labels Grouping
+    svg.selectAll(".value-group")
+      .data(processedData, d => d.name)
+      .join(
+        enter => {
+          const g = enter.append("g").attr("class", "value-group");
+          g.append("text").attr("class", "icon");
+          g.append("text").attr("class", "label");
+          return g;
+        },
+        update => update,
+        exit => exit.remove()
+      )
+      .transition(t)
+      .attr("transform", d => `translate(${x(d.value) + 5}, ${y(d.name) + y.bandwidth() / 2})`);
+
+    svg.selectAll(".icon")
+      .text(d => weatherIcons[d.name] || "")
+      .style("font-size", "14px")
+      .attr("dy", "0.35em");
+
     svg.selectAll(".label")
-      .data(processedData)
-      .join("text")
-      .attr("class", "label")
-      .attr("x", d => x(d.value) + 5)
-      .attr("y", d => y(d.name) + y.bandwidth() / 2)
+      .text(d => d.value)
+      .attr("x", 22)
       .attr("dy", "0.35em")
       .style("font-family", "sans-serif")
       .style("font-size", "11px")
       .style("font-weight", "600")
-      .text(d => d.value);
+      .style("fill", "#666");
 
-    return () => {
-      d3.select(containerRef.current).selectAll("svg").remove();
-    };
-  }, [processedData, d3]);
-
-  if (!d3) {
-    return html`<div style=${{ padding: '20px', textAlign: 'center', color: '#666' }}>Loading D3...</div>`;
-  }
+  }, [processedData]);
 
   return html`
     <div style=${{ 

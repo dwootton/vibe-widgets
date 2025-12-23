@@ -1,5 +1,4 @@
-// Import d3 from CDN dynamically
-const d3Promise = import("https://esm.sh/d3@7");
+import * as d3 from 'd3';
 
 export const Legend = ({ html, colorScale, weatherTypes }) => {
   return html`
@@ -17,13 +16,7 @@ export const Legend = ({ html, colorScale, weatherTypes }) => {
 export default function WeatherVisualization({ model, html, React }) {
   const containerRef = React.useRef(null);
   const [hovered, setHovered] = React.useState(null);
-  const [d3, setD3] = React.useState(null);
   const data = model.get("data") || [];
-
-  // Load d3 dynamically
-  React.useEffect(() => {
-    d3Promise.then(module => setD3(module));
-  }, []);
 
   // Initialize exports
   React.useEffect(() => {
@@ -33,17 +26,14 @@ export default function WeatherVisualization({ model, html, React }) {
     }
   }, []);
 
-  const weatherColors = React.useMemo(() => {
-    if (!d3) return null;
-    return d3.scaleOrdinal()
-      .domain(["sun", "fog", "drizzle", "rain", "snow"])
-      .range(["#eab308", "#94a3b8", "#7dd3fc", "#3b82f6", "#6366f1"]);
-  }, [d3]);
+  const weatherColors = d3.scaleOrdinal()
+    .domain(["sun", "fog", "drizzle", "rain", "snow"])
+    .range(["#eab308", "#94a3b8", "#7dd3fc", "#3b82f6", "#6366f1"]);
 
   const weatherTypes = ["sun", "fog", "drizzle", "rain", "snow"];
 
   React.useEffect(() => {
-    if (!containerRef.current || data.length === 0 || !d3) return;
+    if (!containerRef.current || data.length === 0) return;
 
     const margin = { top: 20, right: 30, bottom: 40, left: 50 };
     const width = 800 - margin.left - margin.right;
@@ -102,16 +92,12 @@ export default function WeatherVisualization({ model, html, React }) {
         .selectAll("line")
         .data(y.ticks())
         .join("line")
-        .attr("y1", d => y(d))
-        .attr("y2", d => y(d))
-        .attr("x2", width));
+          .attr("y1", d => y(d))
+          .attr("y2", d => y(d))
+          .attr("x2", width));
 
     const brush = d3.brush()
-      .extent(
-        [
-          [0, 0],
-          [width, height]
-        ])
+      .extent([[0, 0], [width, height]])
       .on("start brush end", brushed);
 
     const brushGroup = g.append("g").call(brush);
@@ -120,21 +106,21 @@ export default function WeatherVisualization({ model, html, React }) {
       .selectAll("circle")
       .data(formattedData)
       .join("circle")
-      .attr("cx", d => x(d.date))
-      .attr("cy", d => y(d.temp_max))
-      .attr("r", d => r(d.precipitation))
-      .attr("fill", d => weatherColors(d.weather))
-      .attr("fill-opacity", 0.7)
-      .attr("stroke", "#fff")
-      .attr("stroke-width", 0.5)
-      .on("mouseenter", (event, d) => setHovered(d))
-      .on("mouseleave", () => setHovered(null));
+        .attr("cx", d => x(d.date))
+        .attr("cy", d => y(d.temp_max))
+        .attr("r", d => r(d.precipitation))
+        .attr("fill", d => weatherColors(d.weather))
+        .attr("fill-opacity", 0.7)
+        .attr("stroke", "#fff")
+        .attr("stroke-width", 0.5)
+        .on("mouseenter", (event, d) => setHovered(d))
+        .on("mouseleave", () => setHovered(null));
 
     function brushed({ selection }) {
       let selectedIndices = [];
       if (selection) {
         const [[x0, y0], [x1, y1]] = selection;
-        dots.each(function (d) {
+        dots.each(function(d) {
           const isSelected = x0 <= x(d.date) && x(d.date) <= x1 && y0 <= y(d.temp_max) && y(d.temp_max) <= y1;
           d3.select(this).attr("stroke", isSelected ? "#000" : "#fff")
             .attr("stroke-width", isSelected ? 1.5 : 0.5)
@@ -158,11 +144,11 @@ export default function WeatherVisualization({ model, html, React }) {
   }
 
   return html`
-    <div style=${{
-      padding: '20px',
-      background: '#ffffff',
-      borderRadius: '8px',
-      boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+    <div style=${{ 
+      background: '#ffffff', 
+      padding: '20px', 
+      borderRadius: '8px', 
+      boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', 
       border: '1px solid #e5e7eb'
     }}>
       <header style=${{ marginBottom: '16px' }}>
