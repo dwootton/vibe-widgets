@@ -265,7 +265,7 @@ const Hero = () => {
                                 <div className="w-3 h-3 rounded-full bg-orange/80 shadow-[0_0_8px_rgba(249,115,22,0.5)]" />
                                 <div className="w-3 h-3 rounded-full bg-bone/20" />
                             </div>
-                            <div className="font-mono text-[10px] tracking-widest uppercase opacity-60">Neural Synthesis Engine // V.2.0</div>
+                            <div className="font-mono text-[10px] tracking-widest uppercase opacity-60">Widget Synthesis Engine // V.0.2.0</div>
                             <div className="flex gap-1">
                                 {[1, 2, 3].map(i => <div key={i} className="w-1 h-3 bg-bone/20" />)}
                             </div>

@@ -8,16 +8,37 @@ const NotebookCell = ({ index, title, code, output, isActive, icon }: any) => {
     
     // Simulated typing effect for code
     const [typedCode, setTypedCode] = useState("");
+    const hasTypedOnceRef = useRef(false);
+    const typingIntervalRef = useRef<number | null>(null);
     
     useEffect(() => {
-        if (isInView) {
+        if (isInView && !hasTypedOnceRef.current) {
+            hasTypedOnceRef.current = true;
             let i = 0;
-            const interval = setInterval(() => {
+            typingIntervalRef.current = window.setInterval(() => {
                 setTypedCode(code.slice(0, i));
                 i++;
-                if (i > code.length) clearInterval(interval);
+                if (i > code.length) {
+                    if (typingIntervalRef.current) {
+                        clearInterval(typingIntervalRef.current);
+                        typingIntervalRef.current = null;
+                    }
+                    setTypedCode(code);
+                }
             }, 15);
-            return () => clearInterval(interval);
+            return () => {
+                if (typingIntervalRef.current) {
+                    clearInterval(typingIntervalRef.current);
+                    typingIntervalRef.current = null;
+                }
+            };
+        }
+        if (!isInView) {
+            if (typingIntervalRef.current) {
+                clearInterval(typingIntervalRef.current);
+                typingIntervalRef.current = null;
+            }
+            setTypedCode(code);
         }
     }, [isInView, code]);
 
@@ -39,9 +60,9 @@ const NotebookCell = ({ index, title, code, output, isActive, icon }: any) => {
                         <motion.div 
                             initial={{ scale: 0 }} 
                             animate={{ scale: 1 }} 
-                            className="px-2 py-0.5 bg-green-500/10 text-green-600 rounded text-[9px] font-bold uppercase tracking-tighter"
+                            className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-tighter ${output ? 'bg-green-500/10 text-green-600' : 'bg-orange/10 text-orange'}`}
                         >
-                            Executing...
+                            {output ? 'Executed' : 'Executing...'}
                         </motion.div>
                     )}
                 </div>
@@ -116,7 +137,7 @@ const NotebookGuide = () => {
                                 >
                                     <Database className="w-7 h-7" />
                                 </motion.div>
-                                <h2 className="text-6xl font-display font-bold leading-none tracking-tighter">The Lab <br/><span className="text-orange">Log.</span></h2>
+                                <h2 className="text-5xl font-display leading-none tracking-tighter"> vw.<span className="text-orange font-bold ">Tutorial</span></h2>
                                 <p className="text-lg text-slate/50 font-sans leading-relaxed max-w-[320px]">
                                    VibeWidgets offers methods to create, revise, audit, and theme widgets via plain English.
                                 </p>
@@ -152,7 +173,10 @@ const NotebookGuide = () => {
                         <NotebookCell 
                             index={1}
                             icon={<Package />}
-                            code="import vibe_widget as vw\n\n# Configure runtime environment\nvw.setup(provider='gemini', theme='retro')"
+                            code={`import vibe_widget as vw
+
+# Configure runtime environment
+vw.config(theme="vibe-widgets")`}
                             output={
                                 <div className="text-slate/60 text-xs font-mono leading-relaxed">
                                     [SYSTEM] Initializing Vibe-Engine v.1.0.4...<br/>
