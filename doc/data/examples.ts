@@ -5,6 +5,9 @@ const SOLAR_SYSTEM_URL = '/widgets/3d_solar_system_using_three_js_showing_p__0ef
 const HN_CLONE_URL = '/widgets/create_interactive_hacker_news_clone_wid__d763f3d4a1__v2.js';
 const COVID_TRENDS_URL = '/widgets/line_chart_showing_confirmed_deaths_reco__be99ed8976__v1.js';
 const COVID_TRENDS_2_URL = '/widgets/add_vertical_dashed_line_user_hovering_d__9899268ecc__v1.js';
+const CHI25_EMBEDDING_URL = '../public/widgets/interactive_visualization_showing_paper__8646b068fa__v8.js';
+const MNIST_RECOG_URL = '../public/widgets/combined_mnist_digit_recognition_widget__b42bb3c898__v2.js';
+
 
 export type Category = 'Featured' | 'Data Visualization' | 'Reactive' | '3D';
 
@@ -77,6 +80,28 @@ export const EXAMPLES = [
     size: 'medium' as const,
     gifUrl: '',
     dataUrl: '/testdata/day_wise.csv',
+    dataType: 'csv' as const,
+  },
+  {
+    id: 'mnist-recognition',
+    label: 'MNIST Digit Recognition',
+    prompt: "Draw digits on canvas with real-time ML predictions",
+    moduleUrl: MNIST_RECOG_URL,
+    description: 'Interactive canvas for drawing digits with live predictions from a pre-trained TensorFlow model. See real-time accuracy scores for each digit class with cross-widget communication.',
+    categories: ['Featured', 'Reactive'] as Category[],
+    size: 'large' as const,
+    gifUrl: '/gif/mnist_recog.gif',
+  },
+  {
+    id: 'chi25-papers',
+    label: 'CHI Papers Explorer',
+    prompt: "Query-driven semantic search through CHI 2025 papers with interactive visualization",
+    moduleUrl: CHI25_EMBEDDING_URL,
+    description: 'Explore CHI 2025 papers using semantic search with animated wave visualization. Type queries to find similar papers with real-time similarity-based highlighting and interactive node exploration.',
+    categories: ['Featured', 'Data Visualization', 'Reactive'] as Category[],
+    size: 'large' as const,
+    gifUrl: '/gif/chi25embedding.gif',
+    dataUrl: '/testdata/chi25_papers.csv',
     dataType: 'csv' as const,
   },
 ];
