@@ -9,7 +9,7 @@ import {
     WEATHER_DATA_FILES,
     TICTACTOE_DATA_FILES,
     PDF_WEB_DATA_FILES,
-    REVISE_DATA_FILES
+    REVISE_DATA_FILES,
 } from '../data/pyodideNotebooks';
 import PyodideNotebook from '../components/PyodideNotebook';
 import DynamicWidget from '../components/DynamicWidget';
