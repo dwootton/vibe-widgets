@@ -310,6 +310,7 @@ report = widget.audit(level="fast", reuse=True, display=True)
 
 Use `level="full"` for deeper analysis. Set `reuse=False` to force a fresh audit, and `display=False` to suppress rich output.
 When `vw.config(execution="approve")`, audits run automatically during the review step.
+Audit reports include a safety section covering network usage, dynamic code execution, storage writes, cross-origin fetches, and iframe/script injection with a final risk level and caveats.
 
 ### `config()`
 

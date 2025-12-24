@@ -141,7 +141,24 @@ class Config:
     mode: str = "standard"  # "standard" (fast/cheap models) or "premium" (powerful/expensive models)
     theme: Any = None
     execution: str = "auto"  # "auto" or "approve"
-    
+
+    def __repr__(self) -> str:  # pragma: no cover
+        masked_key = "****" if self.api_key else None
+        return (
+            "Config("
+            f"model={self.model!r}, "
+            f"api_key={masked_key!r}, "
+            f"temperature={self.temperature!r}, "
+            f"streaming={self.streaming!r}, "
+            f"mode={self.mode!r}, "
+            f"theme={self.theme!r}, "
+            f"execution={self.execution!r}"
+            ")"
+        )
+
+    def __str__(self) -> str:  # pragma: no cover
+        return self.__repr__()
+
     def __post_init__(self):
         """Resolve model name and load API key from environment."""
         model_map = PREMIUM_MODELS if self.mode == "premium" else STANDARD_MODELS

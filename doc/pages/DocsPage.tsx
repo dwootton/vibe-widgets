@@ -157,6 +157,15 @@ widget = vw.create("...", df, theme=t)`}</code></pre>
                             <p className="mb-6">Audit inspects generated code and reports risks or issues.</p>
                             <pre className="bg-white border-2 border-slate rounded-lg p-6 shadow-hard mb-6 overflow-x-auto"><code>{`report = widget.audit(level="fast", reuse=True, display=True)
 # use level="full" for deeper analysis`}</code></pre>
+                            <p className="mb-2">Safety checks included in audit reports:</p>
+                            <ul>
+                                <li>External network usage</li>
+                                <li>Dynamic code execution (eval / new Function)</li>
+                                <li>Storage writes</li>
+                                <li>Cross-origin fetch</li>
+                                <li>Iframe or script injection</li>
+                            </ul>
+                            <p>Each report includes a final risk level and caveats.</p>
                         </DocContent>
                     } />
                     <Route path="*" element={

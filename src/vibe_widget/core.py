@@ -153,6 +153,7 @@ class VibeWidget(anywidget.AnyWidget):
     audit_apply_error = traitlets.Unicode("").tag(sync=True)
     execution_mode = traitlets.Unicode("auto").tag(sync=True)
     execution_approved = traitlets.Bool(True).tag(sync=True)
+    execution_approved_hash = traitlets.Unicode("").tag(sync=True)
 
     def _ipython_display_(self) -> None:
         """Ensure rich display works in environments that skip mimebundle reprs."""
@@ -338,6 +339,8 @@ class VibeWidget(anywidget.AnyWidget):
         self.observe(self._on_grab_edit, names='grab_edit_request')
         self.observe(self._on_audit_request, names='audit_request')
         self.observe(self._on_audit_apply_request, names='audit_apply_request')
+        self.observe(self._on_code_change, names='code')
+        self.observe(self._on_execution_approved, names='execution_approved')
         
         try:
             self.logs = [f"Analyzing data: {df.shape[0]} rows × {df.shape[1]} columns"]
@@ -795,6 +798,42 @@ class VibeWidget(anywidget.AnyWidget):
         if not isinstance(open_questions, list):
             open_questions = []
         payload["open_questions"] = [str(q).strip() for q in open_questions if str(q).strip()]
+        safety = payload.get("safety", {})
+        if not isinstance(safety, dict):
+            safety = {}
+        checks = safety.get("checks", {})
+        if not isinstance(checks, dict):
+            checks = {}
+        def _normalize_check(key: str) -> dict[str, str]:
+            raw = checks.get(key, {})
+            if not isinstance(raw, dict):
+                raw = {}
+            status = str(raw.get("status", "unknown")).lower()
+            if status not in {"yes", "no", "unknown"}:
+                status = "unknown"
+            return {
+                "status": status,
+                "evidence": str(raw.get("evidence", "")).strip(),
+                "notes": str(raw.get("notes", "")).strip(),
+            }
+        normalized_checks = {
+            "external_network_usage": _normalize_check("external_network_usage"),
+            "dynamic_code_execution": _normalize_check("dynamic_code_execution"),
+            "storage_writes": _normalize_check("storage_writes"),
+            "cross_origin_fetch": _normalize_check("cross_origin_fetch"),
+            "iframe_script_injection": _normalize_check("iframe_script_injection"),
+        }
+        risk_level = str(safety.get("risk_level", "unknown")).lower()
+        if risk_level not in {"low", "medium", "high", "unknown"}:
+            risk_level = "unknown"
+        caveats = safety.get("caveats", [])
+        if not isinstance(caveats, list):
+            caveats = []
+        payload["safety"] = {
+            "checks": normalized_checks,
+            "risk_level": risk_level,
+            "caveats": [str(c).strip() for c in caveats if str(c).strip()],
+        }
         return {root_key: payload}
 
     def _run_audit(
@@ -1319,6 +1358,27 @@ TARGET ELEMENT:
 {sibling_hint}
 
 Find this element in the code and apply the requested change. The element should be identifiable by its tag, classes, text content, or SVG attributes. Modify ONLY this element or closely related code."""
+
+    def _on_code_change(self, change):
+        """Reset approval when code changes unless it matches an approved hash."""
+        if self.execution_mode != "approve":
+            if not self.execution_approved:
+                self.execution_approved = True
+            return
+        current_hash = compute_code_hash(self.code or "")
+        approved_hash = self.execution_approved_hash or ""
+        if approved_hash and current_hash == approved_hash:
+            if not self.execution_approved:
+                self.execution_approved = True
+        else:
+            if self.execution_approved:
+                self.execution_approved = False
+
+    def _on_execution_approved(self, change):
+        """Persist approval hash when user approves the current code."""
+        if not change.get("new"):
+            return
+        self.execution_approved_hash = compute_code_hash(self.code or "")
 
 
 def _resolve_import_source(import_name: str, import_source: Any) -> tuple[Any | None, str | None]:

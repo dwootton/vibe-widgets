@@ -38,7 +38,7 @@ function AppWrapper({ model }) {
   const [isMenuOpen, setMenuOpen] = React.useState(false);
   const [grabMode, setGrabMode] = React.useState(null);
   const [promptCache, setPromptCache] = React.useState({});
-  const [showSource, setShowSource] = React.useState(() => model.get("execution_mode") === "approve" && !model.get("execution_approved"));
+  const [showSource, setShowSource] = React.useState(false);
   const [sourceError, setSourceError] = React.useState("");
   const [renderCode, setRenderCode] = React.useState(code || "");
   const [lastGoodCode, setLastGoodCode] = React.useState(code || "");
@@ -166,13 +166,17 @@ function AppWrapper({ model }) {
   }, [sourceError, status, showSource, renderCode, code]);
 
   React.useEffect(() => {
-    if (approvalMode && !executionApproved) {
+    if (!approvalMode) {
+      return;
+    }
+    if (executionApproved) {
+      setShowSource(false);
+      return;
+    }
+    if (status === "ready" && hasCode) {
       setShowSource(true);
     }
-    if (approvalMode && executionApproved) {
-      setShowSource(false);
-    }
-  }, [approvalMode, executionApproved]);
+  }, [approvalMode, executionApproved, status, hasCode]);
 
   React.useEffect(() => {
     if (applyState.pending) return;
