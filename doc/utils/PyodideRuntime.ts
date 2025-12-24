@@ -79,7 +79,7 @@ class PyodideRuntimeManager {
         model.notifyChange(traitName, value);
       }
     });
-    
+
     // Notify Python side if pyodide is ready
     if (this.pyodide) {
       try {
@@ -167,7 +167,7 @@ for _wid, _widget in vw._widgets.items():
       // Load required packages
       await this.pyodide.loadPackage(['pandas', 'numpy']);
       this.updateState({ loadProgress: 80 });
-      
+
       await this.pyodide.loadPackage('scikit-learn');
       this.updateState({ loadProgress: 95 });
 
@@ -177,10 +177,10 @@ for _wid, _widget in vw._widgets.items():
       this.updateState({ ready: true, loading: false, loadProgress: 100 });
       return this.pyodide;
     } catch (error: any) {
-      this.updateState({ 
-        loading: false, 
+      this.updateState({
+        loading: false,
         error: error.message || 'Failed to load Pyodide',
-        loadProgress: 0 
+        loadProgress: 0
       });
       throw error;
     }
@@ -201,7 +201,7 @@ for _wid, _widget in vw._widgets.items():
    */
   private async setupVibeWidgetMock() {
     const manager = this;
-    
+
     // Create the mock module in Python
     await this.pyodide.runPythonAsync(`
 import sys
@@ -579,7 +579,7 @@ vw._widgets = _widgets
 
     try {
       const result = await this.pyodide.runPythonAsync(code);
-      
+
       // Convert result to JS
       if (result && result.toJs) {
         return result.toJs();
@@ -597,8 +597,7 @@ vw._widgets = _widgets
   async loadCSV(url: string, varName: string): Promise<void> {
     const response = await fetch(url);
     const csvText = await response.text();
-    console.log(`Loading CSV from ${url} into variable ${varName}`);
-    
+
     // Set CSV content in Python
     await this.pyodide.runPythonAsync(`
 import pandas as pd
@@ -615,8 +614,8 @@ del _csv_data
   async loadJSON(url: string, varName: string): Promise<void> {
     const response = await fetch(url);
     const jsonData = await response.json();
-    console.log(`Loading JSON from ${url} into variable ${varName}`);
-    
+    // console.log(`Loading JSON from ${url} into variable ${varName}`);
+
     // Set JSON content in Python
     const jsonStr = JSON.stringify(jsonData).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
     await this.pyodide.runPythonAsync(`
@@ -662,7 +661,7 @@ export class WidgetModel {
   constructor(
     private id: string,
     private runtime: PyodideRuntimeManager
-  ) {}
+  ) { }
 
   get(key: string): any {
     return this.traits.get(key);
@@ -671,7 +670,7 @@ export class WidgetModel {
   set(key: string, value: any): void {
     const oldValue = this.traits.get(key);
     this.traits.set(key, value);
-    
+
     // Notify local listeners
     const listeners = this.listeners.get(key);
     if (listeners) {

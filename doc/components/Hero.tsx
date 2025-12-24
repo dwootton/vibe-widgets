@@ -215,7 +215,6 @@ const Hero = () => {
             throw new Error('Failed to fetch package info');
         }
         const data = await response.json();
-        console.log(data);
         return data.info.version;
     }
 

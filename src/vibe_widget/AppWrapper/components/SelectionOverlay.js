@@ -36,13 +36,13 @@ export default function SelectionOverlay({ onElementSelect, onCancel }) {
     const handleClick = (e) => {
       e.preventDefault();
       e.stopPropagation();
-      
+
       const clickedEl = getElementAtPosition(e.clientX, e.clientY);
-      
-      console.log("[Grab] Click at", e.clientX, e.clientY);
-      console.log("[Grab] Found element:", clickedEl);
-      console.log("[Grab] Element tag:", clickedEl?.tagName);
-      
+
+      // console.log("[Grab] Click at", e.clientX, e.clientY);
+      // console.log("[Grab] Found element:", clickedEl);
+      // console.log("[Grab] Element tag:", clickedEl?.tagName);
+
       if (clickedEl) {
         const rect = clickedEl.getBoundingClientRect();
         const clickBounds = {
@@ -54,7 +54,7 @@ export default function SelectionOverlay({ onElementSelect, onCancel }) {
           height: rect.height,
         };
         const description = describeElement(clickedEl);
-        console.log("[Grab] Description:", description);
+        // console.log("[Grab] Description:", description);
         onElementSelect(description, clickBounds);
       } else {
         console.log("[Grab] No valid element at click position");
@@ -98,18 +98,18 @@ export default function SelectionOverlay({ onElementSelect, onCancel }) {
       }}>
           ${tagName && html`
             <div style=${{
-              position: "absolute",
-              top: "-14px",
-              left: "-2px",
-              background: "#f97316",
-              color: "white",
-              fontSize: "10px",
-              fontWeight: 600,
-              padding: "1px 5px",
-              borderRadius: "3px 3px 0 0",
-              whiteSpace: "nowrap",
-              fontFamily: "ui-monospace, monospace",
-            }}>
+          position: "absolute",
+          top: "-14px",
+          left: "-2px",
+          background: "#f97316",
+          color: "white",
+          fontSize: "10px",
+          fontWeight: 600,
+          padding: "1px 5px",
+          borderRadius: "3px 3px 0 0",
+          whiteSpace: "nowrap",
+          fontFamily: "ui-monospace, monospace",
+        }}>
               ${tagName}
             </div>
           `}

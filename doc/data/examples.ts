@@ -6,7 +6,7 @@ const HN_CLONE_URL = '/widgets/create_interactive_hacker_news_clone_wid__d763f3d
 const COVID_TRENDS_URL = '/widgets/line_chart_showing_confirmed_deaths_reco__be99ed8976__v1.js';
 const COVID_TRENDS_2_URL = '/widgets/add_vertical_dashed_line_user_hovering_d__9899268ecc__v1.js';
 
-export type Category = 'Featured' | 'Data Visualization' | 'Reactive' | '3D Simulation';
+export type Category = 'Featured' | 'Data Visualization' | 'Reactive' | '3D';
 
 export const EXAMPLES = [
   {
@@ -49,7 +49,7 @@ export const EXAMPLES = [
     prompt: "3D solar system using Three.js showing planets orbiting the sun",
     moduleUrl: SOLAR_SYSTEM_URL,
     description: 'Extract planet data from a PDF and visualize it as an interactive 3D solar system. Click on planets to select them!',
-    categories: ['Featured', '3D Simulation'] as Category[],
+    categories: ['Featured', '3D'] as Category[],
     size: 'small' as const,
     gifUrl: '',
     dataUrl: '/testdata/planets.csv',

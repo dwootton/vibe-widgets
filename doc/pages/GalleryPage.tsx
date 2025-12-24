@@ -21,7 +21,7 @@ const CATEGORIES: { label: Category; icon: any }[] = [
     { label: 'Featured', icon: Zap },
     { label: 'Data Visualization', icon: BarChart3 },
     { label: 'Reactive', icon: LayoutGrid },
-    { label: '3D Simulation', icon: Box },
+    { label: '3D', icon: Box },
 ];
 
 const NOTEBOOK_MAP: Record<string, any> = {
