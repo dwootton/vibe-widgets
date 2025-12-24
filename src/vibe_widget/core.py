@@ -14,9 +14,7 @@ import pandas as pd
 import traitlets
 
 from vibe_widget.api import (
-    ExportBundle,
     ExportHandle,
-    ImportsBundle,
     OutputBundle,
     InputsBundle,
     _build_inputs_bundle,
@@ -570,26 +568,22 @@ class VibeWidget(anywidget.AnyWidget):
         display = kwargs.pop("display", True)
         candidate_data = kwargs.pop("data", None)
         candidate_inputs = kwargs.pop("inputs", None)
-        candidate_imports = kwargs.pop("imports", None)
-        if candidate_imports is None and candidate_inputs is not None:
-            candidate_imports = candidate_inputs
+        if "imports" in kwargs:
+            raise TypeError("Use 'inputs' instead of 'imports'.")
+        candidate_imports = candidate_inputs
         if isinstance(candidate_imports, InputsBundle):
             if candidate_data is None:
                 candidate_data = candidate_imports.data
             candidate_imports = candidate_imports.inputs
-        elif isinstance(candidate_imports, ImportsBundle):
-            if candidate_data is None:
-                candidate_data = candidate_imports.data
-            candidate_imports = candidate_imports.imports
 
         if len(args) > 1:
             raise TypeError("Pass at most one positional argument to override data/inputs.")
 
         if len(args) == 1 and candidate_data is None and candidate_imports is None:
             arg = args[0]
-            if isinstance(arg, (InputsBundle, ImportsBundle)):
+            if isinstance(arg, InputsBundle):
                 bundle_data = arg.data if arg.data is not None else candidate_data
-                bundle_inputs = arg.inputs if isinstance(arg, InputsBundle) else arg.imports
+                bundle_inputs = arg.inputs
                 candidate_data = bundle_data
                 merged = dict(self._recipe_imports or {})
                 merged.update(bundle_inputs or {})
@@ -640,35 +634,26 @@ class VibeWidget(anywidget.AnyWidget):
         )
         return widget
 
-    def revise(
+    def edit(
         self,
         description: str,
         data: pd.DataFrame | str | Path | None = None,
-        outputs: dict[str, str] | OutputBundle | ExportBundle | None = None,
-        inputs: dict[str, Any] | InputsBundle | ImportsBundle | None = None,
+        outputs: dict[str, str] | OutputBundle | None = None,
+        inputs: dict[str, Any] | InputsBundle | None = None,
         theme: Theme | str | None = None,
         config: Config | None = None,
         cache: bool = True,
-        exports: dict[str, str] | ExportBundle | None = None,
-        imports: dict[str, Any] | ImportsBundle | None = None,
     ) -> "VibeWidget":
         """
-        Instance helper that mirrors vw.revise but defaults the source to self.
-        Supports the same inputs/outputs/data wrappers as vw.revise.
+        Instance helper that mirrors vw.edit but defaults the source to self.
+        Supports the same inputs/outputs/data wrappers as vw.edit.
         """
-        if outputs is None and exports is not None:
-            warnings.warn("`exports` is deprecated; use `outputs` instead.", DeprecationWarning, stacklevel=2)
-            outputs = exports
-        if inputs is None and imports is not None:
-            warnings.warn("`imports` is deprecated; use `inputs` instead.", DeprecationWarning, stacklevel=2)
-            inputs = imports
-
         data, outputs, inputs, _ = _normalize_api_inputs(
             data=data,
             outputs=outputs,
             inputs=inputs,
         )
-        return revise(
+        return edit(
             description=description,
             source=self,
             data=data,
@@ -1376,7 +1361,7 @@ def _resolve_model(
     """Resolve the model using global config; config arg is deprecated shim."""
     if config_override is not None:
         warnings.warn(
-            "Passing `config` to create/revise is deprecated; call vw.config(...) first.",
+            "Passing `config` to create/edit is deprecated; call vw.config(...) first.",
             DeprecationWarning,
             stacklevel=3,
         )
@@ -1391,8 +1376,8 @@ def _resolve_model(
 
 def _normalize_api_inputs(
     data: Any,
-    outputs: dict[str, str] | OutputBundle | ExportBundle | None,
-    inputs: dict[str, Any] | InputsBundle | ImportsBundle | None,
+    outputs: dict[str, str] | OutputBundle | None,
+    inputs: dict[str, Any] | InputsBundle | None,
 ) -> tuple[Any, dict[str, str] | None, dict[str, Any] | None, str | None]:
     """Allow flexible ordering/wrapping for outputs/inputs/data."""
     normalized_data = data
@@ -1406,35 +1391,18 @@ def _normalize_api_inputs(
         bundle_inputs = normalized_data.inputs or {}
         if isinstance(normalized_inputs, InputsBundle):
             normalized_inputs = {**bundle_inputs, **(normalized_inputs.inputs or {})}
-        elif isinstance(normalized_inputs, ImportsBundle):
-            normalized_inputs = {**bundle_inputs, **(normalized_inputs.imports or {})}
-        else:
-            normalized_inputs = {**bundle_inputs, **(normalized_inputs or {})}
-        normalized_data = normalized_data.data
-    elif isinstance(normalized_data, ImportsBundle):
-        bundle_inputs = normalized_data.imports or {}
-        if isinstance(normalized_inputs, InputsBundle):
-            normalized_inputs = {**bundle_inputs, **(normalized_inputs.inputs or {})}
-        elif isinstance(normalized_inputs, ImportsBundle):
-            normalized_inputs = {**bundle_inputs, **(normalized_inputs.imports or {})}
         else:
             normalized_inputs = {**bundle_inputs, **(normalized_inputs or {})}
         normalized_data = normalized_data.data
 
     if isinstance(normalized_outputs, OutputBundle):
         normalized_outputs = normalized_outputs.outputs
-    elif isinstance(normalized_outputs, ExportBundle):
-        normalized_outputs = normalized_outputs.exports
 
     if isinstance(normalized_inputs, InputsBundle):
         if normalized_data is None:
             normalized_data = normalized_inputs.data
             data_var_name = normalized_inputs.data_name or data_var_name
         normalized_inputs = normalized_inputs.inputs
-    elif isinstance(normalized_inputs, ImportsBundle):
-        if normalized_data is None:
-            normalized_data = normalized_inputs.data
-        normalized_inputs = normalized_inputs.imports
 
     return normalized_data, normalized_outputs, normalized_inputs, data_var_name
 
@@ -1448,8 +1416,6 @@ def create(
     config: Config | None = None,
     display: bool = True,
     cache: bool = True,
-    exports: dict[str, str] | None = None,
-    imports: dict[str, Any] | None = None,
 ) -> VibeWidget:
     """Create a VibeWidget visualization with automatic data processing.
     
@@ -1470,14 +1436,7 @@ def create(
         >>> widget = create("show temperature trends", df)
         >>> widget = create("visualize sales data", "sales.csv")
     """
-    if outputs is None and exports is not None:
-        warnings.warn("`exports` is deprecated; use `outputs` instead.", DeprecationWarning, stacklevel=2)
-        outputs = exports
-    if inputs is None and imports is not None:
-        warnings.warn("`imports` is deprecated; use `inputs` instead.", DeprecationWarning, stacklevel=2)
-        inputs = imports
-
-    if inputs is None and data is not None and not isinstance(data, (InputsBundle, ImportsBundle)):
+    if inputs is None and data is not None and not isinstance(data, InputsBundle):
         frame = inspect.currentframe()
         caller_frame = frame.f_back if frame else None
         data = _build_inputs_bundle((data,), {}, caller_frame=caller_frame)
@@ -1586,19 +1545,17 @@ def _resolve_source(
     raise TypeError(f"Invalid source type: {type(source)}")
 
 
-def revise(
+def edit(
     description: str,
     source: "VibeWidget | ComponentReference | str | Path",
     data: pd.DataFrame | str | Path | None = None,
-    outputs: dict[str, str] | OutputBundle | ExportBundle | None = None,
-    inputs: dict[str, Any] | InputsBundle | ImportsBundle | None = None,
+    outputs: dict[str, str] | OutputBundle | None = None,
+    inputs: dict[str, Any] | InputsBundle | None = None,
     theme: Theme | str | None = None,
     config: Config | None = None,
     cache: bool = True,
-    exports: dict[str, str] | None = None,
-    imports: dict[str, Any] | None = None,
 ) -> "VibeWidget":
-    """Revise a widget by building upon existing code.
+    """Edit a widget by building upon existing code.
     
     Args:
         description: Natural language description of changes
@@ -1611,19 +1568,12 @@ def revise(
         cache: If False, bypass cache and regenerate widget/theme
     
     Returns:
-        New VibeWidget instance with revised code
+        New VibeWidget instance with edited code
     
     Examples:
-        >>> scatter2 = revise("add hover tooltips", scatter)
-        >>> hist = revise("histogram with slider", scatter.slider, data=df)
+        >>> scatter2 = edit("add hover tooltips", scatter)
+        >>> hist = edit("histogram with slider", scatter.slider, data=df)
     """
-    if outputs is None and exports is not None:
-        warnings.warn("`exports` is deprecated; use `outputs` instead.", DeprecationWarning, stacklevel=2)
-        outputs = exports
-    if inputs is None and imports is not None:
-        warnings.warn("`imports` is deprecated; use `inputs` instead.", DeprecationWarning, stacklevel=2)
-        inputs = imports
-
     data, outputs, inputs, _ = _normalize_api_inputs(
         data=data,
         outputs=outputs,

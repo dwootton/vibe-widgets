@@ -185,7 +185,7 @@ const NotebookGuide = () => {
                         <NotebookCell 
                             index={3}
                             icon={<Upload />}
-                            code={`# Interactive refinement\ndashboard.revise(\n  "zoom into Europe and use a toxic color scale",\n)`}
+                            code={`# Interactive refinement\ndashboard.edit(\n  "zoom into Europe and use a toxic color scale",\n)`}
                             output={
                                 <div className="bg-slate border-2 border-black p-1 rounded-xl shadow-lg h-40 flex items-center justify-center overflow-hidden">
                                      <div className="grid grid-cols-10 gap-0.5 w-full h-full p-2">

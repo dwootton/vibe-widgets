@@ -9,28 +9,6 @@ import re
 
 
 @dataclass
-class ExportDefinition:
-    """Definition of a widget export."""
-
-    description: str
-
-
-@dataclass
-class ExportBundle:
-    """Container for resolved exports."""
-
-    exports: dict[str, str]
-
-
-@dataclass
-class ImportsBundle:
-    """Container that unifies data with other imports."""
-
-    data: Any
-    imports: dict[str, Any]
-
-
-@dataclass
 class OutputDefinition:
     """Definition of a widget output."""
 
@@ -54,7 +32,7 @@ class InputsBundle:
 
 
 class ExportHandle:
-    """Callable handle that references a widget export."""
+    """Callable handle that references a widget output."""
 
     __vibe_export__ = True
 
@@ -136,39 +114,16 @@ def _build_inputs_bundle(
     return InputsBundle(data=data, inputs=inputs, data_name=data_name)
 
 
-def export(description: str) -> ExportDefinition:
-    """Declare a single export."""
-    return ExportDefinition(description)
-
-
-def exports(**kwargs: ExportDefinition | str) -> ExportBundle:
-    """Bundle exports into the shape the core expects."""
-    export_map: dict[str, str] = {}
-    for name, definition in kwargs.items():
-        if isinstance(definition, ExportDefinition):
-            export_map[name] = definition.description
-        elif isinstance(definition, str):
-            export_map[name] = definition
-        else:
-            raise TypeError(f"Export '{name}' must be a string or vw.export(...)")
-    return ExportBundle(export_map)
-
-
-def imports(data: Any = None, /, **kwargs: Any) -> ImportsBundle:
-    """Bundle data with imports for a unified API."""
-    return ImportsBundle(data=data, imports=kwargs)
-
-
 def output(description: str) -> OutputDefinition:
     """Declare a single output."""
     return OutputDefinition(description)
 
 
-def outputs(**kwargs: OutputDefinition | ExportDefinition | str) -> OutputBundle:
+def outputs(**kwargs: OutputDefinition | str) -> OutputBundle:
     """Bundle outputs into the shape the core expects."""
     output_map: dict[str, str] = {}
     for name, definition in kwargs.items():
-        if isinstance(definition, (OutputDefinition, ExportDefinition)):
+        if isinstance(definition, OutputDefinition):
             output_map[name] = definition.description
         elif isinstance(definition, str):
             output_map[name] = definition

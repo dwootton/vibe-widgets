@@ -222,10 +222,10 @@ Each output is exposed as a callable handle (e.g., `scatter.outputs.selected_ind
 v1 = vw.create("basic scatter plot", df)
 
 # Refine it
-v2 = v1.revise("add color by category")
+v2 = v1.edit("add color by category")
 
 # Refine further
-v3 = v2.revise("make points larger and add tooltips")
+v3 = v2.edit("make points larger and add tooltips")
 ```
 
 More examples available in [`examples/`](examples/) directory.
@@ -270,12 +270,12 @@ widget = vw.create(
   - Use `vw.inputs(df, selected_indices=scatter.outputs.selected_indices)` to bundle data with inputs
   - Positional arguments are allowed in `vw.inputs(...)` and will infer names when possible
 
-### `widget.revise()`
+### `widget.edit()`
 
 Build upon an existing widget instance.
 
 ```python
-widget = existing_widget.revise(
+widget = existing_widget.edit(
     description: str,           # Description of changes
     data=None,                  # Optional new data
     outputs=None,
@@ -338,7 +338,7 @@ Natural Language → Data Processing → AI Code Generation → Validation → C
 
 - [`examples/cross_widget_interactions.ipynb`](examples/cross_widget_interactions.ipynb) - Interactive dashboards with linked widgets
 - [`examples/pdf_and_web_extraction.ipynb`](examples/pdf_and_web_extraction.ipynb) - PDF tables and web scraping
-- [`examples/revise_example.ipynb`](examples/revise_example.ipynb) - Iterative widget refinement
+- [`examples/revise_example.ipynb`](examples/revise_example.ipynb) - Iterative widget refinement via `edit`
 - [`tests/test_agentic_demo.ipynb`](tests/test_agentic_demo.ipynb) - Comprehensive test suite
 
 ---

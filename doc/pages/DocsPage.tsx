@@ -12,7 +12,7 @@ const Sidebar = () => {
         ]},
         { title: "Core Concepts", links: [
             { label: "Create", href: "/docs/create" },
-            { label: "Revise", href: "/docs/revise" },
+            { label: "Edit", href: "/docs/edit" },
         ]},
         { title: "Ecosystem", links: [
             { label: "Widgetarium", href: "/docs/widgetarium" },
