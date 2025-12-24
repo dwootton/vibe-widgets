@@ -13,7 +13,7 @@ import {
 } from '../data/pyodideNotebooks';
 import PyodideNotebook from '../components/PyodideNotebook';
 import DynamicWidget from '../components/DynamicWidget';
-import { createWidgetModel } from '../utils/widgetModel';
+import { createWidgetModel } from '../utils/exampleDataLoader';
 import { SquareArrowOutUpRight, X, Zap, Box, BarChart3, LayoutGrid } from 'lucide-react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 
@@ -31,7 +31,6 @@ const NOTEBOOK_MAP: Record<string, any> = {
     'solar-system': { cells: PDF_WEB_NOTEBOOK, dataFiles: PDF_WEB_DATA_FILES },
     'hn-clone': { cells: PDF_WEB_NOTEBOOK, dataFiles: PDF_WEB_DATA_FILES },
     'covid-trends': { cells: REVISE_NOTEBOOK, dataFiles: REVISE_DATA_FILES },
-    'covid-trends-2': { cells: REVISE_NOTEBOOK, dataFiles: REVISE_DATA_FILES },
     // 'revise-demo': { cells: REVISE_NOTEBOOK, dataFiles: REVISE_DATA_FILES },
 };
 
@@ -40,8 +39,8 @@ const GalleryPage = () => {
     const [activeCategory, setActiveCategory] = useState<Category | 'All'>('All');
     const [focusedId, setFocusedId] = useState<string | null>(searchParams.get('focus'));
 
-    // Shared models for cross-widget reactivity in the gallery
-    const modelsRef = useRef<Map<any, any>>(new Map());
+    // Shared models for cross-widget reactivity (keyed by dataUrl for widgets that share data)
+    const modelsRef = useRef<Map<string, any>>(new Map());
 
     useEffect(() => {
         const focus = searchParams.get('focus');
@@ -61,12 +60,14 @@ const GalleryPage = () => {
         setSearchParams({});
     };
 
-    const getSharedModel = (example: any) => {
-        if (!example.initialData || example.initialData.length === 0) return undefined;
-        if (!modelsRef.current.has(example.initialData)) {
-            modelsRef.current.set(example.initialData, createWidgetModel(example.initialData));
+    const getModelForExample = (example: typeof EXAMPLES[0]) => {
+        const dataUrl = example.dataUrl;
+        if (!dataUrl) return undefined;
+
+        if (!modelsRef.current.has(dataUrl)) {
+            modelsRef.current.set(dataUrl, createWidgetModel([]));
         }
-        return modelsRef.current.get(example.initialData);
+        return modelsRef.current.get(dataUrl);
     };
 
     const focusedExample = useMemo(() => EXAMPLES.find(ex => ex.id === focusedId), [focusedId]);
@@ -130,7 +131,7 @@ const GalleryPage = () => {
                                     key={example.id}
                                     example={example}
                                     index={index}
-                                    model={getSharedModel(example)}
+                                    model={getModelForExample(example)}
                                     onOpen={() => handleFocus(example.id)}
                                 />
                             ))}
@@ -213,7 +214,7 @@ const GalleryPage = () => {
     );
 };
 
-const GalleryCard = ({ example, index, model, onOpen }: { example: any; index: number; model: any; onOpen: () => void }) => {
+const GalleryCard = ({ example, index, model, onOpen }: { example: typeof EXAMPLES[0]; index: number; model: any; onOpen: () => void }) => {
     const sizeClasses = {
         small: 'md:col-span-2 md:row-span-1',
         medium: 'md:col-span-2 md:row-span-2',
@@ -242,8 +243,10 @@ const GalleryCard = ({ example, index, model, onOpen }: { example: any; index: n
                     <div className="w-full h-full p-4">
                         <DynamicWidget
                             moduleUrl={example.moduleUrl}
-                            initialData={example.initialData}
                             model={model}
+                            exampleId={example.id}
+                            dataUrl={example.dataUrl}
+                            dataType={example.dataType}
                         />
                     </div>
                 )}

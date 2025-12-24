@@ -25,102 +25,6 @@ function ChevronIcon({ expanded, className = '' }: { expanded: boolean; classNam
   );
 }
 
-/**
- * Python syntax highlighter using regex tokenization
- */
-function PythonHighlighter({ code }: { code: string }) {
-  const highlighted = useMemo(() => {
-    // Token patterns for Python syntax
-    const patterns: Array<{ pattern: RegExp; className: string }> = [
-      // Comments (must come first to avoid matching # in strings)
-      { pattern: /#[^\n]*/g, className: 'text-slate/50 italic' },
-      // Triple-quoted strings
-      { pattern: /"""[\s\S]*?"""|'''[\s\S]*?'''/g, className: 'text-green-600' },
-      // Double-quoted strings
-      { pattern: /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g, className: 'text-green-600' },
-      // f-strings
-      { pattern: /f"(?:[^"\\]|\\.)*"|f'(?:[^'\\]|\\.)*'/g, className: 'text-green-600' },
-      // Keywords
-      { pattern: /\b(import|from|as|def|class|return|if|elif|else|for|while|try|except|finally|with|raise|pass|break|continue|and|or|not|in|is|None|True|False|lambda|yield|global|nonlocal|assert|async|await)\b/g, className: 'text-purple-600 font-semibold' },
-      // Built-in functions
-      { pattern: /\b(print|len|range|list|dict|set|tuple|str|int|float|bool|type|isinstance|hasattr|getattr|setattr|open|input|format|sorted|enumerate|zip|map|filter|sum|min|max|abs|round|any|all|dir|help|id|repr|super)\b(?=\s*\()/g, className: 'text-cyan-600' },
-      // Decorators
-      { pattern: /@\w+/g, className: 'text-yellow-600' },
-      // Numbers
-      { pattern: /\b\d+\.?\d*\b/g, className: 'text-orange-500' },
-      // Function/method calls
-      { pattern: /\b([a-zA-Z_]\w*)\s*(?=\()/g, className: 'text-blue-600' },
-      // Self/cls
-      { pattern: /\b(self|cls)\b/g, className: 'text-red-500' },
-    ];
-
-    // Tokenize the code
-    interface Token {
-      text: string;
-      className?: string;
-      index: number;
-    }
-
-    const tokens: Token[] = [];
-
-    // Find all matches and their positions
-    const allMatches: Array<{ start: number; end: number; text: string; className: string }> = [];
-
-    patterns.forEach(({ pattern, className }) => {
-      const regex = new RegExp(pattern.source, pattern.flags);
-      let match;
-      while ((match = regex.exec(code)) !== null) {
-        allMatches.push({
-          start: match.index,
-          end: match.index + match[0].length,
-          text: match[0],
-          className,
-        });
-      }
-    });
-
-    // Sort by position and filter overlapping (earlier patterns take priority)
-    allMatches.sort((a, b) => a.start - b.start);
-
-    const filteredMatches: typeof allMatches = [];
-    let lastEnd = 0;
-
-    for (const match of allMatches) {
-      if (match.start >= lastEnd) {
-        filteredMatches.push(match);
-        lastEnd = match.end;
-      }
-    }
-
-    // Build tokens
-    let pos = 0;
-    for (const match of filteredMatches) {
-      if (match.start > pos) {
-        tokens.push({ text: code.slice(pos, match.start), index: pos });
-      }
-      tokens.push({ text: match.text, className: match.className, index: match.start });
-      pos = match.end;
-    }
-    if (pos < code.length) {
-      tokens.push({ text: code.slice(pos), index: pos });
-    }
-
-    return tokens;
-  }, [code]);
-
-  return (
-    <code className="font-mono text-sm whitespace-pre-wrap">
-      {highlighted.map((token, i) => (
-        token.className ? (
-          <span key={i} className={token.className}>{token.text}</span>
-        ) : (
-          <span key={i} className="text-slate">{token.text}</span>
-        )
-      ))}
-    </code>
-  );
-}
-
 export interface NotebookCell {
   type: 'markdown' | 'code';
   content: string;
@@ -188,7 +92,7 @@ export default function PyodideNotebook({ cells, title, dataFiles = [], notebook
     'cross-widget': EXAMPLES.find(ex => ex.id === 'weather-scatter'),
     'tictactoe': EXAMPLES.find(ex => ex.id === 'tic-tac-toe'),
     'pdf-web': EXAMPLES.find(ex => ex.id === 'weather-bars'),
-    'revise': EXAMPLES.find(ex => ex.id === 'weather-scatter'),
+    'revise': EXAMPLES.find(ex => ex.id === 'covid-trends'),
   }), []);
 
   const mobilePreview = (notebookKey && notebookPreviewMap[notebookKey]) || EXAMPLES[0];
@@ -344,7 +248,12 @@ export default function PyodideNotebook({ cells, title, dataFiles = [], notebook
         )}
         {mobilePreview && (
           <div className="mt-6 bg-[#F2F0E9] border-2 border-slate/10 rounded-xl p-3">
-            <DynamicWidget moduleUrl={mobilePreview.moduleUrl} initialData={mobilePreview.initialData} />
+            <DynamicWidget
+              moduleUrl={mobilePreview.moduleUrl}
+              exampleId={mobilePreview.id}
+              dataUrl={mobilePreview.dataUrl}
+              dataType={mobilePreview.dataType}
+            />
           </div>
         )}
         <p className="mt-4 text-xs font-mono text-slate/60">

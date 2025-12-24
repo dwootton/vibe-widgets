@@ -1,233 +1,172 @@
 import * as d3 from "https://esm.sh/d3@7";
 
-const COLORS = {
-  Confirmed: "#1565C0", // Dark Blue
-  Deaths: "#C62828",    // Dark Red
-  Recovered: "#2E7D32"  // Dark Green
-};
-
-export const ChartLegend = ({ html, keys, colors }) => {
+export const Legend = ({ items, html }) => {
   return html`
-    <div style=${{ display: "flex", gap: "16px", marginBottom: "12px", justifyContent: "center", fontSize: "14px", fontFamily: "sans-serif" }}>
-      ${keys.map(key => html`
-        <div style=${{ display: "flex", alignItems: "center", gap: "6px" }}>
-          <span style=${{ width: "12px", height: "12px", backgroundColor: colors[key], borderRadius: "50%", display: "inline-block" }}></span>
-          <span style=${{ color: "#333", fontWeight: "600" }}>${key}</span>
+    <div style=${{
+      display: 'flex',
+      flexWrap: 'wrap',
+      gap: '20px',
+      justifyContent: 'center',
+      marginBottom: '16px',
+      fontFamily: 'sans-serif',
+      fontSize: '14px'
+    }}>
+      ${items.map(item => html`
+        <div style=${{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style=${{
+        width: '12px',
+        height: '12px',
+        backgroundColor: item.color,
+        display: 'inline-block',
+        borderRadius: '2px'
+      }}></span>
+          <span style=${{ color: '#374151', fontWeight: '600' }}>${item.label}</span>
         </div>
       `)}
     </div>
   `;
 };
 
-export const Toggle = ({ html, label, checked, onChange }) => {
-  return html`
-    <label style=${{ display: "flex", alignItems: "center", gap: "8px", fontSize: "14px", cursor: "pointer", fontFamily: "sans-serif", color: "#333" }}>
-      <input type="checkbox" checked=${checked} onChange=${onChange} style=${{ cursor: "pointer" }} />
-      ${label}
-    </label>
-  `;
-};
-
 export default function Widget({ model, html, React }) {
   const rawData = model.get("data") || [];
   const containerRef = React.useRef(null);
-  const [useLogScale, setUseLogScale] = React.useState(false);
-  const [hoverData, setHoverData] = React.useState(null);
 
-  // Parse data once
+  // Memoize processed data to avoid recalculation on every render
   const parsedData = React.useMemo(() => {
     const parseTime = d3.timeParse("%Y-%m-%d");
     return rawData.map(d => ({
       ...d,
-      dateObj: parseTime(d.Date),
+      DateObj: parseTime(d.Date),
       Confirmed: +d.Confirmed,
       Deaths: +d.Deaths,
       Recovered: +d.Recovered
-    })).sort((a, b) => a.dateObj - b.dateObj);
+    })).filter(d => d.DateObj !== null).sort((a, b) => a.DateObj - b.DateObj);
   }, [rawData]);
 
   React.useEffect(() => {
     if (!containerRef.current || parsedData.length === 0) return;
 
-    const width = containerRef.current.clientWidth || 800;
+    // Dimensions
+    const width = 640;
     const height = 400;
-    const margin = { top: 20, right: 30, bottom: 40, left: 60 };
-    const innerWidth = width - margin.left - margin.right;
-    const innerHeight = height - margin.top - margin.bottom;
+    const margin = { top: 20, right: 30, bottom: 30, left: 60 };
 
-    // Clear previous chart
+    // Clear previous SVG
     const container = d3.select(containerRef.current);
     container.selectAll("*").remove();
 
-    const svg = container.append("svg")
+    const svg = container
+      .append("svg")
       .attr("width", width)
       .attr("height", height)
       .attr("viewBox", [0, 0, width, height])
-      .attr("style", "max-width: 100%; height: auto; font-family: sans-serif;");
-
-    const g = svg.append("g")
-      .attr("transform", `translate(${margin.left},${margin.top})`);
+      .attr("style", "max-width: 100%; height: auto; display: block;");
 
     // Scales
     const x = d3.scaleTime()
-      .domain(d3.extent(parsedData, d => d.dateObj))
-      .range([0, innerWidth]);
+      .domain(d3.extent(parsedData, d => d.DateObj))
+      .range([margin.left, width - margin.right]);
 
-    const yMax = d3.max(parsedData, d => Math.max(d.Confirmed, d.Deaths, d.Recovered));
-    
-    // Log scale handling: Log(0) is -Infinity, so we clamp min value to 1
-    const y = useLogScale
-      ? d3.scaleLog().domain([1, yMax]).range([innerHeight, 0]).nice()
-      : d3.scaleLinear().domain([0, yMax]).range([innerHeight, 0]).nice();
+    const yMax = d3.max(parsedData, d => Math.max(d.Confirmed, d.Recovered, d.Deaths));
+    const y = d3.scaleLinear()
+      .domain([0, yMax])
+      .nice()
+      .range([height - margin.bottom, margin.top]);
 
     // Axes
-    const xAxis = d3.axisBottom(x).ticks(width / 80).tickSizeOuter(0);
-    const yAxis = d3.axisLeft(y).ticks(height / 40, useLogScale ? "~s" : "s");
+    const xAxis = g => g
+      .attr("transform", `translate(0,${height - margin.bottom})`)
+      .call(d3.axisBottom(x).ticks(width / 80).tickSizeOuter(0))
+      .call(g => g.select(".domain").attr("stroke", "#9ca3af"))
+      .call(g => g.selectAll(".tick text").attr("fill", "#4b5563"));
 
-    g.append("g")
-      .attr("transform", `translate(0,${innerHeight})`)
-      .call(xAxis)
-      .call(g => g.select(".domain").attr("stroke", "#666"))
-      .call(g => g.selectAll(".tick line").attr("stroke", "#ccc"))
-      .call(g => g.selectAll(".tick text").attr("fill", "#333"));
-
-    g.append("g")
-      .call(yAxis)
+    const yAxis = g => g
+      .attr("transform", `translate(${margin.left},0)`)
+      .call(d3.axisLeft(y).ticks(height / 40, "s"))
       .call(g => g.select(".domain").remove())
-      .call(g => g.selectAll(".tick line").attr("stroke", "#eee").attr("x2", innerWidth)) // grid lines
-      .call(g => g.selectAll(".tick text").attr("fill", "#333"));
+      .call(g => g.selectAll(".tick line").clone()
+        .attr("x2", width - margin.left - margin.right)
+        .attr("stroke", "#e5e7eb")
+        .attr("stroke-opacity", 0.5)) // Grid lines
+      .call(g => g.selectAll(".tick text").attr("fill", "#4b5563"))
+      .call(g => g.append("text")
+        .attr("x", -margin.left)
+        .attr("y", 10)
+        .attr("fill", "#111827")
+        .attr("text-anchor", "start")
+        .attr("font-weight", "bold")
+        .text("Cases"));
 
-    // Lines
-    const metrics = ["Confirmed", "Deaths", "Recovered"];
-    
-    metrics.forEach(metric => {
-      const line = d3.line()
-        .defined(d => !isNaN(d[metric]) && (useLogScale ? d[metric] > 0 : true))
-        .x(d => x(d.dateObj))
-        .y(d => y(Math.max(useLogScale ? 1 : 0, d[metric])));
+    svg.append("g").call(xAxis);
+    svg.append("g").call(yAxis);
 
-      g.append("path")
+    // Line Generators
+    const lineGenerator = (key) => d3.line()
+      .defined(d => !isNaN(d[key]))
+      .x(d => x(d.DateObj))
+      .y(d => y(d[key]));
+
+    const series = [
+      { key: "Confirmed", color: "#2563eb" }, // Blue
+      { key: "Recovered", color: "#16a34a" }, // Green
+      { key: "Deaths", color: "#dc2626" }     // Red
+    ];
+
+    // Draw Lines
+    series.forEach(({ key, color }) => {
+      svg.append("path")
         .datum(parsedData)
         .attr("fill", "none")
-        .attr("stroke", COLORS[metric])
+        .attr("stroke", color)
         .attr("stroke-width", 2.5)
         .attr("stroke-linejoin", "round")
         .attr("stroke-linecap", "round")
-        .attr("d", line);
+        .attr("d", lineGenerator(key));
     });
 
-    // Hover Interaction (Overlay)
-    const overlay = g.append("rect")
-      .attr("width", innerWidth)
-      .attr("height", innerHeight)
-      .attr("fill", "transparent")
-      .style("cursor", "crosshair");
-
-    const tooltipLine = g.append("line")
-      .attr("stroke", "#999")
-      .attr("stroke-width", 1)
-      .attr("stroke-dasharray", "4 4")
-      .style("opacity", 0);
-
-    const bisect = d3.bisector(d => d.dateObj).center;
-
-    overlay
-      .on("mousemove", (event) => {
-        const [mx] = d3.pointer(event);
-        const dateVal = x.invert(mx);
-        const index = bisect(parsedData, dateVal, 1);
-        const a = parsedData[index - 1];
-        const b = parsedData[index];
-        const d = b && (dateVal - a.dateObj > b.dateObj - dateVal) ? b : a;
-
-        if (d) {
-          tooltipLine
-            .attr("x1", x(d.dateObj))
-            .attr("x2", x(d.dateObj))
-            .attr("y1", 0)
-            .attr("y2", innerHeight)
-            .style("opacity", 1);
-          
-          setHoverData(d);
-        }
-      })
-      .on("mouseleave", () => {
-        tooltipLine.style("opacity", 0);
-        setHoverData(null);
-      });
-
+    // Cleanup
     return () => {
-      svg.remove();
+      container.selectAll("*").remove();
     };
-  }, [parsedData, useLogScale]);
+  }, [parsedData]);
 
-  const formatDate = (date) => {
-    if (!date) return "";
-    return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-  };
-
-  const formatNum = (num) => new Intl.NumberFormat().format(num);
+  const legendItems = [
+    { label: "Confirmed", color: "#2563eb" },
+    { label: "Recovered", color: "#16a34a" },
+    { label: "Deaths", color: "#dc2626" }
+  ];
 
   return html`
-    <div style=${{ 
-      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
-      border: '1px solid #e0e0e0',
-      borderRadius: '8px',
-      padding: '20px',
-      backgroundColor: '#fff',
-      color: '#333'
+    <section style=${{ padding: '24px', fontFamily: 'system-ui, -apple-system, sans-serif', backgroundColor: '#ffffff' }}>
+      <h2 style=${{
+      margin: '0 0 20px',
+      textAlign: 'center',
+      color: '#111827',
+      fontSize: '20px',
+      fontWeight: '700'
     }}>
-      <div style=${{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-        <h2 style=${{ margin: 0, fontSize: '18px', fontWeight: '600' }}>Global COVID-19 Trends</h2>
-        <${Toggle} 
-          html=${html} 
-          label="Log Scale" 
-          checked=${useLogScale} 
-          onChange=${(e) => setUseLogScale(e.target.checked)} 
-        />
+        Global COVID-19 Trends
+      </h2>
+      
+      <${Legend} items=${legendItems} html=${html} />
+      
+      <div 
+        ref=${containerRef} 
+        style=${{
+      position: 'relative',
+      height: '400px',
+      width: '100%'
+    }}
+      ></div>
+      
+      <div style=${{
+      marginTop: '12px',
+      textAlign: 'right',
+      fontSize: '12px',
+      color: '#6b7280'
+    }}>
+        Source: Data Repository
       </div>
-
-      <${ChartLegend} html=${html} keys=${["Confirmed", "Deaths", "Recovered"]} colors=${COLORS} />
-
-      <div style=${{ position: 'relative' }}>
-        <div ref=${containerRef} style=${{ width: '100%', minHeight: '400px' }}></div>
-        
-        ${hoverData && html`
-          <div style=${{
-            position: 'absolute',
-            top: '10px',
-            left: '60px',
-            backgroundColor: 'rgba(255, 255, 255, 0.95)',
-            border: '1px solid #ddd',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-            padding: '12px',
-            borderRadius: '4px',
-            pointerEvents: 'none',
-            fontSize: '13px',
-            lineHeight: '1.6'
-          }}>
-            <div style=${{ fontWeight: 'bold', marginBottom: '4px', borderBottom: '1px solid #eee', paddingBottom: '4px' }}>
-              ${formatDate(hoverData.dateObj)}
-            </div>
-            <div style=${{ color: COLORS.Confirmed }}>
-              Confirmed: <strong>${formatNum(hoverData.Confirmed)}</strong>
-            </div>
-            <div style=${{ color: COLORS.Deaths }}>
-              Deaths: <strong>${formatNum(hoverData.Deaths)}</strong>
-            </div>
-            <div style=${{ color: COLORS.Recovered }}>
-              Recovered: <strong>${formatNum(hoverData.Recovered)}</strong>
-            </div>
-            <div style=${{ marginTop: '4px', color: '#666', fontSize: '12px' }}>
-              Active: ${formatNum(hoverData.Active)}
-            </div>
-          </div>
-        `}
-      </div>
-
-      <div style=${{ marginTop: '12px', fontSize: '12px', color: '#777', textAlign: 'right' }}>
-        Data source: Global Summary
-      </div>
-    </div>
+    </section>
   `;
 }

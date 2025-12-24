@@ -52,7 +52,7 @@ export default function WeatherVisualization({ model, html, React }) {
       ...d,
       index: i,
       date: parseDate(d.date)
-    }));
+    })).filter(d => d.date); // Filter out invalid dates
 
     const x = d3.scaleTime()
       .domain(d3.extent(formattedData, d => d.date))
@@ -92,9 +92,9 @@ export default function WeatherVisualization({ model, html, React }) {
         .selectAll("line")
         .data(y.ticks())
         .join("line")
-          .attr("y1", d => y(d))
-          .attr("y2", d => y(d))
-          .attr("x2", width));
+        .attr("y1", d => y(d))
+        .attr("y2", d => y(d))
+        .attr("x2", width));
 
     const brush = d3.brush()
       .extent([[0, 0], [width, height]])
@@ -106,21 +106,21 @@ export default function WeatherVisualization({ model, html, React }) {
       .selectAll("circle")
       .data(formattedData)
       .join("circle")
-        .attr("cx", d => x(d.date))
-        .attr("cy", d => y(d.temp_max))
-        .attr("r", d => r(d.precipitation))
-        .attr("fill", d => weatherColors(d.weather))
-        .attr("fill-opacity", 0.7)
-        .attr("stroke", "#fff")
-        .attr("stroke-width", 0.5)
-        .on("mouseenter", (event, d) => setHovered(d))
-        .on("mouseleave", () => setHovered(null));
+      .attr("cx", d => x(d.date))
+      .attr("cy", d => y(d.temp_max))
+      .attr("r", d => r(d.precipitation))
+      .attr("fill", d => weatherColors(d.weather))
+      .attr("fill-opacity", 0.7)
+      .attr("stroke", "#fff")
+      .attr("stroke-width", 0.5)
+      .on("mouseenter", (event, d) => setHovered(d))
+      .on("mouseleave", () => setHovered(null));
 
     function brushed({ selection }) {
       let selectedIndices = [];
       if (selection) {
         const [[x0, y0], [x1, y1]] = selection;
-        dots.each(function(d) {
+        dots.each(function (d) {
           const isSelected = x0 <= x(d.date) && x(d.date) <= x1 && y0 <= y(d.temp_max) && y(d.temp_max) <= y1;
           d3.select(this).attr("stroke", isSelected ? "#000" : "#fff")
             .attr("stroke-width", isSelected ? 1.5 : 0.5)
@@ -144,11 +144,11 @@ export default function WeatherVisualization({ model, html, React }) {
   }
 
   return html`
-    <div style=${{ 
-      background: '#ffffff', 
-      padding: '20px', 
-      borderRadius: '8px', 
-      boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', 
+    <div style=${{
+      background: '#ffffff',
+      padding: '20px',
+      borderRadius: '8px',
+      boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
       border: '1px solid #e5e7eb'
     }}>
       <header style=${{ marginBottom: '16px' }}>
@@ -167,7 +167,7 @@ export default function WeatherVisualization({ model, html, React }) {
       <div style=${{ height: '24px', marginTop: '8px' }}>
         ${hovered && html`
           <div style=${{ fontSize: '13px', color: '#374151', display: 'flex', gap: '16px' }}>
-            <span><strong>Date:</strong> ${hovered.date.toLocaleDateString()}</span>
+            <span><strong>Date:</strong> ${hovered.date ? hovered.date.toLocaleDateString() : 'N/A'}</span>
             <span><strong>Max Temp:</strong> ${hovered.temp_max}°C</span>
             <span><strong>Precip:</strong> ${hovered.precipitation}mm</span>
             <span style=${{ textTransform: 'capitalize' }}><strong>Weather:</strong> ${hovered.weather}</span>

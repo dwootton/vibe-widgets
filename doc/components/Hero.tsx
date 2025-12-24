@@ -132,9 +132,9 @@ const GlitchSubtitle = () => {
 };
 
 const Hero = () => {
-    const [selectedExample, setSelectedExample] = useState(EXAMPLES[0]);
+    const [selectedExample, setSelectedExample] = useState(EXAMPLES[1]);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
-    const [generationState, setGenerationState] = useState<'idle' | 'generating' | 'complete'>('idle');
+    const [generationState, setGenerationState] = useState<'idle' | 'generating' | 'complete'>('complete');
     const [inputText, setInputText] = useState("");
     const [filteredExamples, setFilteredExamples] = useState(EXAMPLES);
     const [packageVersion, setPackageVersion] = useState<string | null>(null);
@@ -231,7 +231,7 @@ const Hero = () => {
                         transition={{ delay: 0.5 }}
                         className="text-xl md:text-2xl text-slate/70 max-w-xl font-sans leading-relaxed"
                     >
-                        Create Jupyter widgets from plain English. 
+                        Create Jupyter widgets from plain English.
                         Interactive, reactive, and fully customizable widgets in seconds.
                     </motion.p>
 
@@ -241,7 +241,12 @@ const Hero = () => {
                         transition={{ delay: 0.7 }}
                         className="flex flex-wrap gap-4 pt-4"
                     >
-                        <div className="flex items-center gap-3 px-6 py-4 border-2 border-slate/10 rounded-md font-mono text-sm bg-white/50 shadow-hard-sm hover:shadow-hard hover:-translate-y-1 transition-all cursor-pointer group">
+                        <div
+                            className="flex items-center gap-3 px-6 py-4 border-2 border-slate/10 rounded-md font-mono text-sm bg-white/50 shadow-hard-sm hover:shadow-hard hover:-translate-y-1 transition-all cursor-pointer group"
+                            onClick={() => {
+                                navigator.clipboard.writeText(`pip install vibe-widget`);
+                            }}
+                        >
                             <span className="text-orange">$</span>
                             <span>pip install vibe-widget</span>
                             <Copy className="w-4 h-4 text-slate/40 group-hover:text-orange transition-colors" />
@@ -265,7 +270,6 @@ const Hero = () => {
                                 <div className="w-3 h-3 rounded-full bg-orange/80 shadow-[0_0_8px_rgba(249,115,22,0.5)]" />
                                 <div className="w-3 h-3 rounded-full bg-bone/20" />
                             </div>
-                            <div className="font-mono text-[10px] tracking-widest uppercase opacity-60">Neural Synthesis Engine // V.2.0</div>
                             <div className="flex gap-1">
                                 {[1, 2, 3].map(i => <div key={i} className="w-1 h-3 bg-bone/20" />)}
                             </div>
@@ -385,12 +389,13 @@ const Hero = () => {
                                             animate={{ opacity: 1, filter: 'blur(0px)' }}
                                             className="w-full h-full bg-white border border-slate/10 shadow-sm rounded overflow-hidden flex flex-col"
                                         >
-                                            <div className="h-6 bg-slate/5 border-b border-slate/10 flex items-center px-2 gap-1">
-                                                <div className="w-1.5 h-1.5 rounded-full bg-slate/20" />
-                                                <div className="w-1.5 h-1.5 rounded-full bg-slate/20" />
-                                            </div>
                                             <div className="flex-1 p-2 overflow-auto scrollbar-hide">
-                                                <DynamicWidget moduleUrl={selectedExample.moduleUrl} initialData={selectedExample.initialData} />
+                                                <DynamicWidget
+                                                    moduleUrl={selectedExample.moduleUrl}
+                                                    exampleId={selectedExample.id}
+                                                    dataUrl={selectedExample.dataUrl}
+                                                    dataType={selectedExample.dataType}
+                                                />
                                             </div>
                                         </motion.div>
                                     )}

@@ -1,67 +1,161 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 // @ts-ignore
 import { html } from 'htm/react/index.js';
+import { loadDataFile, createWidgetModel, EXAMPLE_DATA_CONFIG, isDataCached, getCachedData } from '../utils/exampleDataLoader';
 
 interface DynamicWidgetProps {
   moduleUrl?: string; // runtime-loaded ESM from public
   model?: any;
-  initialData?: any[]; // Initial data to populate the widget
+  /** Example ID to auto-load data from testdata */
+  exampleId?: string;
+  /** Direct data URL override (e.g., /testdata/seattle-weather.csv) */
+  dataUrl?: string;
+  /** Data type for dataUrl (csv or json) */
+  dataType?: 'csv' | 'json';
+  /** Show blur overlay while loading data */
+  showLoadingBlur?: boolean;
 }
 
-export default function DynamicWidget({ moduleUrl, model, initialData }: DynamicWidgetProps) {
-  // Use provided model or a basic shared stub
-  const sharedModel = useMemo(() => {
+export default function DynamicWidget({
+  moduleUrl,
+  model,
+  exampleId,
+  dataUrl,
+  dataType = 'csv',
+  showLoadingBlur = true
+}: DynamicWidgetProps) {
+  // Determine URL for data loading
+  const resolvedDataUrl = useMemo(() => {
+    if (dataUrl) return dataUrl;
+    if (exampleId) {
+      const config = EXAMPLE_DATA_CONFIG[exampleId];
+      return config?.previewDataFiles?.[0]?.url;
+    }
+    return undefined;
+  }, [exampleId, dataUrl]);
+
+  const resolvedDataType = useMemo(() => {
+    if (dataUrl) return dataType;
+    if (exampleId) {
+      const config = EXAMPLE_DATA_CONFIG[exampleId];
+      return config?.previewDataFiles?.[0]?.type || 'csv';
+    }
+    return 'csv';
+  }, [exampleId, dataUrl, dataType]);
+
+  // Determine if this widget needs data for preview
+  const needsData = useMemo(() => {
+    if (exampleId) {
+      const config = EXAMPLE_DATA_CONFIG[exampleId];
+      return config?.requiresDataForPreview ?? false;
+    }
+    return !!dataUrl;
+  }, [exampleId, dataUrl]);
+
+  // Use provided model or create new one (stable reference)
+  const widgetModel = useMemo(() => {
     if (model) return model;
-    const listeners = new Map<string, Set<Function>>();
-    const state: Record<string, any> = {
-      // Initialize with data if provided
-      data: initialData || [],
-      selected_indices: [],
-    };
-    return {
-      get: (k: string) => state[k],
-      set: (k: string, v: any) => { state[k] = v; },
-      save_changes: () => {
-        for (const [key, subs] of listeners) {
-          const change = { name: key, new: state[key] };
-          subs.forEach((fn) => {
-            try { fn(change); } catch { }
-          });
+    return createWidgetModel([]);
+  }, [model]);
+
+  // Check for initial data availability (cached or already in model)
+  const initialCachedData = useMemo(() => {
+    if (resolvedDataUrl && isDataCached(resolvedDataUrl)) {
+      return getCachedData(resolvedDataUrl);
+    }
+    return undefined;
+  }, [resolvedDataUrl]);
+
+  const modelInitialData = useMemo(() => {
+    if (model) {
+      const modelData = model.get('data');
+      if (modelData && Array.isArray(modelData) && modelData.length > 0) {
+        return modelData;
+      }
+    }
+    return undefined;
+  }, [model]);
+
+  const hasInitialData = !!(initialCachedData || modelInitialData);
+  const [isDataLoading, setIsDataLoading] = useState(false);
+  const [dataLoaded, setDataLoaded] = useState(false);
+
+  // Sync dataLoaded state with actual data availability
+  useEffect(() => {
+    if (hasInitialData && !dataLoaded) {
+      setDataLoaded(true);
+    }
+  }, [hasInitialData, dataLoaded]);
+
+  // Populate model with cached data if available (run once on mount)
+  const initializedRef = useRef(false);
+  useEffect(() => {
+    if (initializedRef.current) return;
+    initializedRef.current = true;
+
+    const dataToUse = initialCachedData || modelInitialData;
+    if (dataToUse && dataToUse.length > 0) {
+      const currentData = widgetModel.get('data');
+      if (!currentData || currentData.length === 0) {
+        widgetModel.set('data', dataToUse);
+        setDataLoaded(true);
+      }
+    }
+  }, []);
+
+  // Track if we've already loaded data for this URL
+  const loadedUrlRef = useRef<string | null>(null);
+
+  // Load data lazily when component mounts
+  useEffect(() => {
+    // Skip if: no data needed, no URL
+    if (!needsData || !resolvedDataUrl) return;
+
+    // Skip if already loaded this URL
+    if (loadedUrlRef.current === resolvedDataUrl) return;
+
+    // Check if model already has data
+    const currentData = widgetModel.get('data');
+    if (currentData && Array.isArray(currentData) && currentData.length > 0) {
+      setDataLoaded(true);
+      setIsDataLoading(false);
+      loadedUrlRef.current = resolvedDataUrl;
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadData() {
+      setIsDataLoading(true);
+      try {
+        const data = await loadDataFile(resolvedDataUrl!, resolvedDataType);
+        if (!cancelled && data && data.length > 0) {
+          widgetModel.set('data', data);
+          setDataLoaded(true);
+          loadedUrlRef.current = resolvedDataUrl;
         }
-      },
-      on: (eventName: string, handler: Function) => {
-        // Expect format "change:trait"
-        const key = eventName.startsWith('change:') ? eventName.slice(7) : eventName;
-        const set = listeners.get(key) || new Set();
-        set.add(handler);
-        listeners.set(key, set);
-      },
-      off: (eventName: string, handler: Function) => {
-        const key = eventName.startsWith('change:') ? eventName.slice(7) : eventName;
-        const set = listeners.get(key);
-        if (set) set.delete(handler);
-      },
-      observe: (handler: Function, names?: string | string[]) => {
-        const keys = Array.isArray(names) ? names : names ? [names] : Object.keys(state);
-        keys.forEach((k) => {
-          const set = listeners.get(k) || new Set();
-          set.add(handler);
-          listeners.set(k, set);
-        });
-      },
-    };
-  }, [model, initialData]);
+      } catch (e) {
+        console.error('Failed to load widget data:', e);
+      } finally {
+        if (!cancelled) {
+          setIsDataLoading(false);
+        }
+      }
+    }
 
-  const [Loaded, setLoaded] = React.useState<any>(null);
+    loadData();
+    return () => { cancelled = true; };
+  }, [resolvedDataUrl, resolvedDataType, needsData, widgetModel]);
 
-  React.useEffect(() => {
+  const [Loaded, setLoaded] = useState<any>(null);
+
+  useEffect(() => {
     let cancelled = false;
     async function load() {
       try {
         if (moduleUrl) {
           const mod = await import(/* @vite-ignore */ moduleUrl);
           const fn = mod?.default ?? mod;
-          console.log('Loaded widget module:', moduleUrl, mod);
           if (typeof fn !== 'function') throw new Error('Invalid widget module from URL');
           if (!cancelled) setLoaded(() => fn);
         }
@@ -74,12 +168,30 @@ export default function DynamicWidget({ moduleUrl, model, initialData }: Dynamic
     return () => { cancelled = true; };
   }, [moduleUrl]);
 
+  // Show blur while loading data (only for widgets that need data)
+  const showBlur = showLoadingBlur && needsData && isDataLoading && !dataLoaded;
+
+  // Don't render widget until data is ready (prevents NaN errors in charts)
+  const canRenderWidget = !needsData || dataLoaded;
+
   return (
-    <div className="w-full h-full overflow-hidden">
-      {Loaded ? (
-        <Loaded model={sharedModel} html={html} React={React} />
+    <div className="w-full h-full overflow-hidden relative">
+      {/* Blur overlay while loading data */}
+      {showBlur && (
+        <div className="absolute inset-0 z-10 backdrop-blur-sm bg-white/30 dark:bg-slate-900/30 flex items-center justify-center">
+          <div className="flex flex-col items-center gap-2">
+            <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+            <span className="text-xs text-slate-500 dark:text-slate-400">Loading data…</span>
+          </div>
+        </div>
+      )}
+
+      {Loaded && canRenderWidget ? (
+        <Loaded model={widgetModel} html={html} React={React} />
       ) : (
-        <div className="p-4 text-slate/50 font-mono text-xs">Loading widget…</div>
+        <div className="p-4 text-slate/50 font-mono text-xs flex items-center justify-center h-full">
+          {isDataLoading ? 'Loading data…' : 'Loading widget…'}
+        </div>
       )}
     </div>
   );
