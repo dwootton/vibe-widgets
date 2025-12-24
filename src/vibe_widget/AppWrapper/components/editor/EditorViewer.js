@@ -905,6 +905,7 @@ export default function EditorViewer({
           <span>${showApprove ? "Review & Approve" : "Code Editor"}</span>
           <div class="source-viewer-actions">
             ${auditIndicator && html`<span class="audit-indicator">${auditIndicator}</span>`}
+            ${auditStatus === "running" && html`<span class="audit-indicator">Auditing...</span>`}
             ${!hasAuditPayload && html`
               <button class="source-viewer-button" disabled=${auditStatus === "running"} onClick=${() => {
                 setShowAuditPanel(true);
@@ -946,6 +947,7 @@ export default function EditorViewer({
             <${CodeEditor} ref=${editorRef} value=${draftCode} onChange=${setDraftCode} />
             ${showAuditPanel && html`
               <${AuditPanel}
+                hasAuditPayload=${hasAuditPayload}
                 visibleConcerns=${visibleConcerns}
                 dismissedConcerns=${dismissedConcerns}
                 showDismissed=${showDismissed}
@@ -960,6 +962,10 @@ export default function EditorViewer({
                 onAddPendingChange=${addPendingChange}
                 onDismissConcern=${dismissConcern}
                 onScrollToLines=${scrollToLines}
+                onRunAudit=${() => {
+                  setShowAuditPanel(true);
+                  onAudit("fast");
+                }}
               />
             `}
           </div>
