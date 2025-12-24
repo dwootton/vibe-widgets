@@ -71,12 +71,12 @@ export const EXAMPLES = [
     id: 'covid-trends',
     label: 'COVID-19 Trends',
     prompt: "Line chart showing Confirmed, Deaths, and Recovered cases over time",
-    moduleUrl: COVID_TRENDS_URL,
+    moduleUrl: COVID_TRENDS_2_URL,
     description: 'Visualize COVID-19 pandemic trends with an interactive line chart showing confirmed cases, deaths, and recoveries over time.',
     categories: ['Data Visualization'] as Category[],
     size: 'medium' as const,
     gifUrl: '',
     dataUrl: '/testdata/day_wise.csv',
     dataType: 'csv' as const,
-  }
+  },
 ];

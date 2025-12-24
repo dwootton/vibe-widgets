@@ -103,7 +103,7 @@ hn_clone`,
     type: 'markdown',
     content: `
       <h3>How It Works</h3>
-      <pre class="bg-slate/5 p-4 rounded-lg overflow-x-auto"><code class="text-sm"># PDF Extraction
+      <pre class="bg-material-dark/5 p-4 rounded-lg overflow-x-auto"><code class="text-sm"># PDF Extraction
 solar_system = vw.create(
     description="3D visualization...",
     data="../testdata/planets.pdf",  # PDF path
@@ -330,7 +330,7 @@ bars`,
     type: 'markdown',
     content: `
       <h3>How It Works</h3>
-      <pre class="bg-slate/5 p-4 rounded-lg overflow-x-auto"><code class="text-sm"># Widget A exports a trait
+      <pre class="bg-material-dark/5 p-4 rounded-lg overflow-x-auto"><code class="text-sm"># Widget A exports a trait
 scatter = vw.create(
     ...,
     exports=vw.exports(
@@ -346,7 +346,8 @@ bars = vw.create(
         selected_indices=scatter.selected_indices
     )
 )
-      <p class="mt-4">
+    </code></pre>
+    <p class="mt-4">
         Vibe Widget automatically creates bidirectional links using traitlets,
         so changes flow between widgets in real-time!
       </p>

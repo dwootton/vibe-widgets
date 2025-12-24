@@ -1,7 +1,8 @@
 import React from 'react';
 import { Routes, Route, Link, useLocation } from 'react-router-dom';
-import NotebookGuide from '../components/NotebookGuide';
+// import NotebookGuide from '../components/NotebookGuide';
 import PyodideNotebook from '../components/PyodideNotebook';
+import { Copy } from 'lucide-react';
 import {
     CROSS_WIDGET_NOTEBOOK,
     TICTACTOE_NOTEBOOK,
@@ -87,7 +88,7 @@ const DocContent = ({ title, children }: any) => (
 );
 
 const CodeBlock = ({ code, language = "python" }: { code: string; language?: string }) => (
-    <div className="bg-material-bg text-bone rounded-lg border-l-2 border-orange relative overflow-hidden">
+    <div className="bg-material-bg text-bone rounded-lg border-orange relative overflow-hidden my-2">
         <div className="relative">
             <SyntaxHighlighter
                 language={language}
@@ -112,9 +113,18 @@ const DocsPage = () => {
                     <Route path="/" element={
                         <DocContent title="Installation">
                             <p className="text-xl text-slate/70 mb-8">Get up and running with Vibe Widget in seconds.</p>
-                            <div className="bg-white border-2 border-slate rounded-lg p-6 shadow-hard mb-6">
-                                <code className="font-mono text-orange">pip install vibe-widget</code>
-                            </div>
+                            <pre className="bg-white border-2 border-slate rounded-lg p-6 shadow-hard mb-6">
+                                <div
+                                    className="flex items-center gap-3 transition-all cursor-pointer group"
+                                    onClick={() => {
+                                        navigator.clipboard.writeText(`pip install vibe-widget`);
+                                    }}
+                                >
+                                    <span className="text-orange">$</span>
+                                    <code className="font-mono text-orange">pip install vibe-widget</code>
+                                    <Copy className="w-4 h-4 text-slate/40 group-hover:text-orange transition-colors" />
+                                </div>
+                            </pre>
                             <p className="mb-6">Vibe Widget requires Python 3.8+ and an OpenRouter API key.</p>
                             <CodeBlock
                                 language="bash"

@@ -105,9 +105,9 @@ const ContextCell = ({ cell, position }: { cell: { type: string, label: string, 
         duration: 0.6,
         ease: [0.4, 0.0, 0.2, 1]
       }}
-      className={`absolute ${position === 'upper' ? 'bottom-full mb-8' : 'top-full mt-8'} left-0 right-0 pointer-events-none`}
+      className={`absolute ${position === 'upper' ? 'bottom-full mb-6' : 'top-full mt-6'} left-0 right-0 pointer-events-none`}
     >
-      <div className={`relative ${gradientClass} rounded-xl border border-slate/5 backdrop-blur-sm`}>
+      <div className={`relative backdrop-blur-sm`}>
         <div className="p-4">
           <div className="flex items-center gap-2 mb-2">
             <span className="text-[8px] font-mono font-bold text-orange/60 uppercase tracking-widest">
@@ -117,18 +117,30 @@ const ContextCell = ({ cell, position }: { cell: { type: string, label: string, 
               {cell.label}
             </span>
           </div>
-          <div className="text-bone rounded-md relative overflow-hidden">
+          <div className="text-material-bg relative overflow-hidden">
             <div className="relative">
-              <SyntaxHighlighter
-                language="python"
-                style={materialLight}
-                customStyle={customStyle}
-                PreTag="div"
-                CodeTag="code"
-                showLineNumbers={false}
-              >
-                {cell.content}
-              </SyntaxHighlighter>
+              <pre className={`${gradientClass} p-4 rounded-lg text-xs font-mono overflow-x-auto`}>
+                <SyntaxHighlighter
+                  language="python"
+                  // style?: { [key: string]: React.CSSProperties } | undefined;
+                  style={{
+                    ...materialLight,
+                    'code[class*="language-"]': {
+                      background: 'transparent',
+                    },
+                    'pre[class*="language-"]': {
+                      background: 'transparent',
+                      margin: 0,
+                    },
+                  }}
+                  customStyle={customStyle}
+                  PreTag="div"
+                  CodeTag="code"
+                  showLineNumbers={false}
+                >
+                  {cell.content}
+                </SyntaxHighlighter>
+              </pre>
             </div>
           </div>
         </div>

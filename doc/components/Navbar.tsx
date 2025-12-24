@@ -1,24 +1,39 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Github,  Menu, X } from 'lucide-react';
+import { Github, Menu, X, Star } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import Logo from './Logo';
 
 const Navbar = () => {
   const location = useLocation();
   const [isMobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [githubStars, setGithubStars] = useState<number | null>(null);
+
+  useEffect(() => {
+    getGithubStars().then(stars => setGithubStars(stars));
+  }, []);
 
   useEffect(() => {
     setMobileMenuOpen(false);
   }, [location.pathname]);
 
+  async function getGithubStars(repo = 'dwootton/vibe-widgets') {
+    const response = await fetch(`https://api.github.com/repos/${repo}`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch repo info');
+    }
+    const data = await response.json();
+    console.log(data);
+    return data.stargazers_count;
+  }
+
   const navLinks = [
     { label: 'Docs', href: '/docs', prefix: '01.' },
     { label: 'Gallery', href: '/gallery', prefix: '02.' },
   ];
-  
+
   return (
-    <motion.nav 
+    <motion.nav
       initial={{ y: -100 }}
       animate={{ y: 0 }}
       transition={{ duration: 0.5, ease: "circOut" }}
@@ -51,7 +66,7 @@ const Navbar = () => {
           })}
         </div>
 
-        <a 
+        <a
           href="https://github.com/dwootton/vibe-widgets"
           target="_blank"
           rel="noopener noreferrer"
@@ -59,6 +74,10 @@ const Navbar = () => {
         >
           <Github className="w-4 h-4" />
           <span className="hidden sm:inline">GitHub</span>
+          <span className="flex items-center gap-1 font-mono">
+            <Star className="w-4 h-4 text-yellow-400" />
+          </span>
+          {githubStars ?? ''}
         </a>
 
         <button
@@ -90,7 +109,7 @@ const Navbar = () => {
                   {label}
                 </Link>
               ))}
-              <a 
+              <a
                 href="https://github.com/dwootton/vibe-widgets"
                 target="_blank"
                 rel="noopener noreferrer"

@@ -31,7 +31,6 @@ const NOTEBOOK_MAP: Record<string, any> = {
     'solar-system': { cells: PDF_WEB_NOTEBOOK, dataFiles: PDF_WEB_DATA_FILES },
     'hn-clone': { cells: PDF_WEB_NOTEBOOK, dataFiles: PDF_WEB_DATA_FILES },
     'covid-trends': { cells: REVISE_NOTEBOOK, dataFiles: REVISE_DATA_FILES },
-    // 'revise-demo': { cells: REVISE_NOTEBOOK, dataFiles: REVISE_DATA_FILES },
 };
 
 const GalleryPage = () => {
