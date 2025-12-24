@@ -585,6 +585,51 @@ class VibeWidget(anywidget.AnyWidget):
             return self._rerun_with(**kwargs)
         return self._rerun_with(*args, **kwargs)
 
+    def save(self, path: str | Path, include_inputs: bool = False) -> Path:
+        """Save this widget to a portable .vw bundle."""
+        target = Path(path)
+        if target.suffix != ".vw":
+            target = target.with_suffix(".vw")
+
+        metadata = getattr(self, "_widget_metadata", {}) or {}
+        theme_payload = None
+        if self._theme:
+            theme_payload = {
+                "name": getattr(self._theme, "name", None),
+                "description": getattr(self._theme, "description", None),
+            }
+        elif metadata.get("theme_name") or metadata.get("theme_description"):
+            theme_payload = {
+                "name": metadata.get("theme_name"),
+                "description": metadata.get("theme_description"),
+            }
+
+        inputs_signature = {name: "<input>" for name in (self._imports or {}).keys()}
+        if self.data:
+            inputs_signature.setdefault("data", "<input>")
+        save_inputs = {"embedded": False, "values": {}}
+        if include_inputs:
+            save_inputs = _serialize_inputs(self)
+
+        payload = {
+            "version": "1.0",
+            "created_at": metadata.get("created_at"),
+            "description": self.description,
+            "code": self.code or "",
+            "outputs": dict(self._exports or {}),
+            "inputs_signature": inputs_signature,
+            "theme": theme_payload,
+            "components": metadata.get("components", []),
+            "model": metadata.get("model"),
+            "audit": metadata.get("audit"),
+            "save_inputs": save_inputs,
+        }
+
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with open(target, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=2, ensure_ascii=True)
+        return target
+
     def _rerun_with(self, *args, **kwargs) -> "VibeWidget":
         if not hasattr(self, "_recipe_description"):
             raise ValueError("This widget was created before rerun support was added.")
@@ -1404,6 +1449,27 @@ def _resolve_import_source(import_name: str, import_source: Any) -> tuple[Any | 
     return None, None
 
 
+def _serialize_inputs(widget: VibeWidget) -> dict[str, Any]:
+    """Serialize inputs for save/load bundles."""
+    values: dict[str, Any] = {}
+    # Data is treated as an input and stored under "data".
+    try:
+        values["data"] = clean_for_json(widget.data)
+    except Exception:
+        values["data"] = widget.data
+
+    for name, value in (widget._imports or {}).items():
+        if isinstance(value, ExportHandle) or getattr(value, "__vibe_export__", False):
+            values[name] = {"type": "export_handle", "name": getattr(value, "name", name)}
+            continue
+        try:
+            values[name] = clean_for_json(value)
+        except Exception:
+            values[name] = str(value)
+
+    return {"embedded": True, "values": values}
+
+
 def _link_imports(widget: VibeWidget, imports: dict[str, Any] | None) -> None:
     """Link imported traits to widget."""
     if not imports:
@@ -1708,6 +1774,99 @@ def edit(
         theme=resolved_theme,
     )
     
+    return widget
+
+
+def load(path: str | Path, approval: bool = True, display: bool = True) -> VibeWidget:
+    """Load a widget bundle from disk."""
+    target = Path(path)
+    with open(target, "r", encoding="utf-8") as handle:
+        payload = json.load(handle)
+
+    description = payload.get("description") or "Loaded widget"
+    code = payload.get("code") or ""
+    outputs = payload.get("outputs") or {}
+    inputs_signature = payload.get("inputs_signature") or {}
+    theme_payload = payload.get("theme") or {}
+    components = payload.get("components") or []
+    save_inputs = payload.get("save_inputs") or {}
+    embedded = bool(save_inputs.get("embedded"))
+    input_values = save_inputs.get("values") if isinstance(save_inputs.get("values"), dict) else {}
+
+    data_rows = []
+    if embedded and isinstance(input_values, dict):
+        data_rows = input_values.pop("data", [])
+
+    df = pd.DataFrame(data_rows) if isinstance(data_rows, list) else pd.DataFrame()
+
+    imports: dict[str, Any] = {}
+    if isinstance(inputs_signature, dict):
+        for name in inputs_signature.keys():
+            if name == "data":
+                continue
+            imports[name] = None
+    if isinstance(input_values, dict):
+        for name, value in input_values.items():
+            if name == "data":
+                continue
+            if isinstance(value, dict) and value.get("type") == "export_handle":
+                imports[name] = None
+            else:
+                imports[name] = value
+
+    theme = None
+    if isinstance(theme_payload, dict) and (theme_payload.get("name") or theme_payload.get("description")):
+        theme = Theme(
+            description=theme_payload.get("description") or "",
+            name=theme_payload.get("name"),
+        )
+
+    metadata = {
+        "description": description,
+        "components": components,
+        "model": payload.get("model"),
+        "theme_name": theme_payload.get("name") if isinstance(theme_payload, dict) else None,
+        "theme_description": theme_payload.get("description") if isinstance(theme_payload, dict) else None,
+        "inputs_signature": inputs_signature,
+        "outputs": outputs,
+        "source_path": str(target.resolve()),
+        "version": payload.get("version"),
+        "created_at": payload.get("created_at"),
+        "audit": payload.get("audit"),
+    }
+
+    execution_mode = "approve" if approval else "auto"
+    execution_approved = not approval
+    approved_hash = compute_code_hash(code) if not approval else ""
+
+    widget = VibeWidget._create_with_dynamic_traits(
+        description=description,
+        df=df,
+        model=payload.get("model") or DEFAULT_MODEL,
+        exports=outputs,
+        imports=imports,
+        theme=theme,
+        data_var_name=None,
+        existing_code=code,
+        existing_metadata=metadata,
+        display_widget=display,
+        cache=False,
+        execution_mode=execution_mode,
+        execution_approved=execution_approved,
+        execution_approved_hash=approved_hash,
+    )
+
+    if isinstance(input_values, dict):
+        for name, value in input_values.items():
+            if name == "data":
+                continue
+            if isinstance(value, dict) and value.get("type") == "export_handle":
+                continue
+            try:
+                setattr(widget, name, value)
+            except Exception:
+                pass
+
     return widget
 
 
