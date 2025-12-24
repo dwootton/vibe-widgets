@@ -268,7 +268,7 @@ const Hero = () => {
                         className="text-xl md:text-2xl text-slate/70 max-w-xl font-sans leading-relaxed"
                     >
                         Create, edit, audit, and wire widgets together via plain English.
-                        Run your widgets in JupyterLab · VS Code · Colab. Powered by AnyWidget.
+                        Run your widgets in JupyterLab · VS Code · Colab. Powered by <a href="https://anywidget.dev" className="text-[#009999] underline" target="_blank" rel="noopener noreferrer">anywidget</a>.
                     </motion.p>
 
                     <motion.div
