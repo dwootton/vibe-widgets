@@ -2,11 +2,12 @@ import React, { useRef } from 'react';
 import { motion, useScroll, useTransform, useSpring } from 'framer-motion';
 import DynamicWidget from './DynamicWidget';
 import { EXAMPLES } from '../data/examples';
+import { createWidgetModel } from '../utils/widgetModel';
 import { ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 
 // Fixed: Added key to props type to allow assignment when mapping
-const GalleryItem = ({ example, index, mode }: { example: typeof EXAMPLES[0], index: number, mode: 'horizontal' | 'grid', key?: React.Key }) => {
+const GalleryItem = ({ example, index, mode, model }: { example: typeof EXAMPLES[0], index: number, mode: 'horizontal' | 'grid', model?: any, key?: React.Key }) => {
   const navigate = useNavigate();
 
   const handleClick = () => {
@@ -28,7 +29,7 @@ const GalleryItem = ({ example, index, mode }: { example: typeof EXAMPLES[0], in
       <div className="h-[280px] bg-bone border-2 border-slate/5 rounded-lg overflow-hidden relative shadow-inner group-hover:border-orange/20 transition-colors">
         <div className="absolute inset-0 bg-grid-pattern opacity-[0.05] pointer-events-none" />
         <div className="h-full w-full overflow-hidden">
-          <DynamicWidget moduleUrl={example.moduleUrl} initialData={example.initialData} />
+          <DynamicWidget moduleUrl={example.moduleUrl} initialData={example.initialData} model={model} />
         </div>
         {/* Decorative Overlay */}
         <div className="absolute top-2 right-2 px-2 py-1 bg-white/80 backdrop-blur rounded text-[9px] font-mono border border-slate/5 text-slate/40 uppercase tracking-widest">Live Runtime</div>
@@ -57,6 +58,17 @@ const WidgetGallery = ({ mode }: WidgetGalleryProps) => {
     offset: ["start start", "end end"]
   });
 
+  // Shared models for cross-widget reactivity
+  const modelsRef = useRef<Map<any, any>>(new Map());
+
+  const getSharedModel = (example: any) => {
+    if (!example.initialData || example.initialData.length === 0) return undefined;
+    if (!modelsRef.current.has(example.initialData)) {
+      modelsRef.current.set(example.initialData, createWidgetModel(example.initialData));
+    }
+    return modelsRef.current.get(example.initialData);
+  };
+
   // Horizontal transform for sticky scroll
   const x = useTransform(scrollYProgress, [0, 1], ["0%", "-65%"]);
   const springX = useSpring(x, { stiffness: 100, damping: 20 });
@@ -72,7 +84,7 @@ const WidgetGallery = ({ mode }: WidgetGalleryProps) => {
         <div className="sticky top-0 h-screen flex items-center overflow-hidden">
           <motion.div style={{ x: springX }} className="flex gap-12 px-12 md:px-24">
             {featuredExamples.map((ex, i) => (
-              <GalleryItem key={ex.id} example={ex} index={i} mode="horizontal" />
+              <GalleryItem key={ex.id} example={ex} index={i} mode="horizontal" model={getSharedModel(ex)} />
             ))}
 
             {/* Final "View All" Card */}
@@ -100,7 +112,7 @@ const WidgetGallery = ({ mode }: WidgetGalleryProps) => {
     <div className="container mx-auto px-4 md:px-12 pb-20">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
         {featuredExamples.map((ex, i) => (
-          <GalleryItem key={ex.id} example={ex} index={i} mode="grid" />
+          <GalleryItem key={ex.id} example={ex} index={i} mode="grid" model={getSharedModel(ex)} />
         ))}
       </div>
     </div>

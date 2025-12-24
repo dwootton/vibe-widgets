@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import { EXAMPLES, Category } from '../data/examples';
 import {
@@ -12,7 +12,9 @@ import {
     REVISE_DATA_FILES
 } from '../data/pyodideNotebooks';
 import PyodideNotebook from '../components/PyodideNotebook';
-import { SquareArrowOutUpRight, X, Filter, LayoutGrid, Zap, Box, BarChart3 } from 'lucide-react';
+import DynamicWidget from '../components/DynamicWidget';
+import { createWidgetModel } from '../utils/widgetModel';
+import { SquareArrowOutUpRight, X, Zap, Box, BarChart3, LayoutGrid } from 'lucide-react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 
 const CATEGORIES: { label: Category; icon: any }[] = [
@@ -25,25 +27,25 @@ const CATEGORIES: { label: Category; icon: any }[] = [
 const NOTEBOOK_MAP: Record<string, any> = {
     'tic-tac-toe': { cells: TICTACTOE_NOTEBOOK, dataFiles: TICTACTOE_DATA_FILES },
     'weather-scatter': { cells: CROSS_WIDGET_NOTEBOOK, dataFiles: WEATHER_DATA_FILES },
-    'weather-bars': { cells: CROSS_WIDGET_NOTEBOOK, dataFiles: WEATHER_DATA_FILES }, // Shared for now
+    'weather-bars': { cells: CROSS_WIDGET_NOTEBOOK, dataFiles: WEATHER_DATA_FILES },
     'solar-system': { cells: PDF_WEB_NOTEBOOK, dataFiles: PDF_WEB_DATA_FILES },
-    'hn-clone': { cells: PDF_WEB_NOTEBOOK, dataFiles: PDF_WEB_DATA_FILES }, // Shared for now
-    'revise-demo': { cells: REVISE_NOTEBOOK, dataFiles: REVISE_DATA_FILES },
+    'hn-clone': { cells: PDF_WEB_NOTEBOOK, dataFiles: PDF_WEB_DATA_FILES },
+    'covid-trends': { cells: REVISE_NOTEBOOK, dataFiles: REVISE_DATA_FILES },
+    'covid-trends-2': { cells: REVISE_NOTEBOOK, dataFiles: REVISE_DATA_FILES },
+    // 'revise-demo': { cells: REVISE_NOTEBOOK, dataFiles: REVISE_DATA_FILES },
 };
 
 const GalleryPage = () => {
     const [searchParams, setSearchParams] = useSearchParams();
-    const navigate = useNavigate();
     const [activeCategory, setActiveCategory] = useState<Category | 'All'>('All');
     const [focusedId, setFocusedId] = useState<string | null>(searchParams.get('focus'));
 
+    // Shared models for cross-widget reactivity in the gallery
+    const modelsRef = useRef<Map<any, any>>(new Map());
+
     useEffect(() => {
         const focus = searchParams.get('focus');
-        if (focus) {
-            setFocusedId(focus);
-        } else {
-            setFocusedId(null);
-        }
+        setFocusedId(focus);
     }, [searchParams]);
 
     const filteredExamples = useMemo(() => {
@@ -57,6 +59,14 @@ const GalleryPage = () => {
 
     const handleClose = () => {
         setSearchParams({});
+    };
+
+    const getSharedModel = (example: any) => {
+        if (!example.initialData || example.initialData.length === 0) return undefined;
+        if (!modelsRef.current.has(example.initialData)) {
+            modelsRef.current.set(example.initialData, createWidgetModel(example.initialData));
+        }
+        return modelsRef.current.get(example.initialData);
     };
 
     const focusedExample = useMemo(() => EXAMPLES.find(ex => ex.id === focusedId), [focusedId]);
@@ -74,11 +84,10 @@ const GalleryPage = () => {
                             WIDGET <span className="text-orange">GALLERY</span>
                         </h1>
                         <p className="text-xl text-slate/60 font-mono max-w-2xl">
-                            A collection of high-performance, reactive widgets synthesized from natural language.
+                            Interactive modules synthesized from natural language.
                         </p>
                     </div>
 
-                    {/* Tabs */}
                     <div className="flex flex-wrap gap-2 bg-slate/5 p-1.5 rounded-xl border border-slate/10 backdrop-blur-sm">
                         <button
                             onClick={() => setActiveCategory('All')}
@@ -87,7 +96,7 @@ const GalleryPage = () => {
                                 : 'text-slate/40 hover:text-slate/60 hover:bg-slate/5'
                                 }`}
                         >
-                            All Modules
+                            All
                         </button>
                         {CATEGORIES.map(({ label, icon: Icon }) => (
                             <button
@@ -121,16 +130,18 @@ const GalleryPage = () => {
                                     key={example.id}
                                     example={example}
                                     index={index}
-                                    onClick={() => handleFocus(example.id)}
+                                    model={getSharedModel(example)}
+                                    onOpen={() => handleFocus(example.id)}
                                 />
                             ))}
                         </motion.div>
                     ) : (
                         <motion.div
                             key="focus"
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
+                            initial={{ opacity: 0, x: 100 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: -100 }}
+                            transition={{ type: "spring", stiffness: 300, damping: 30 }}
                             className="flex flex-col lg:flex-row gap-8 h-[calc(100vh-250px)]"
                         >
                             {/* Sidebar List */}
@@ -138,14 +149,15 @@ const GalleryPage = () => {
                                 <div className="flex flex-col gap-4">
                                     <button
                                         onClick={handleClose}
-                                        className="flex items-center gap-2 p-4 bg-white border-2 border-slate rounded-xl font-mono text-xs uppercase tracking-widest hover:bg-slate hover:text-white transition-all group"
+                                        className="flex items-center gap-2 p-4 bg-white border-2 border-slate rounded-xl font-mono text-xs uppercase tracking-widest hover:bg-slate hover:text-white transition-all group shadow-hard-sm"
                                     >
                                         <X className="w-4 h-4 group-hover:rotate-90 transition-transform" />
                                         Back to Gallery
                                     </button>
                                     {EXAMPLES.map((ex) => (
-                                        <div
+                                        <motion.div
                                             key={ex.id}
+                                            whileHover={{ x: 4 }}
                                             onClick={() => handleFocus(ex.id)}
                                             className={`
                                                 p-4 rounded-xl border-2 cursor-pointer transition-all
@@ -158,13 +170,16 @@ const GalleryPage = () => {
                                             <p className={`text-[10px] font-mono uppercase tracking-tighter opacity-60`}>
                                                 {ex.categories.join(' • ')}
                                             </p>
-                                        </div>
+                                        </motion.div>
                                     ))}
                                 </div>
                             </div>
 
                             {/* Notebook View */}
-                            <div className="flex-1 bg-white border-2 border-slate rounded-2xl shadow-hard overflow-hidden flex flex-col">
+                            <motion.div
+                                layoutId={`card-${focusedId}`}
+                                className="flex-1 bg-white border-2 border-slate rounded-2xl shadow-hard overflow-hidden flex flex-col"
+                            >
                                 <div className="p-4 border-b-2 border-slate/5 flex items-center justify-between bg-bone/50">
                                     <div className="flex items-center gap-3">
                                         <div className="w-3 h-3 rounded-full bg-red-400" />
@@ -189,7 +204,7 @@ const GalleryPage = () => {
                                         </div>
                                     )}
                                 </div>
-                            </div>
+                            </motion.div>
                         </motion.div>
                     )}
                 </AnimatePresence>
@@ -198,12 +213,14 @@ const GalleryPage = () => {
     );
 };
 
-const GalleryCard = ({ example, index, onClick }: { example: any; index: number; onClick: () => void }) => {
+const GalleryCard = ({ example, index, model, onOpen }: { example: any; index: number; model: any; onOpen: () => void }) => {
     const sizeClasses = {
-        small: 'md:col-span-1 md:row-span-1',
-        medium: 'md:col-span-2 md:row-span-1',
-        large: 'md:col-span-2 md:row-span-2',
+        small: 'md:col-span-2 md:row-span-1',
+        medium: 'md:col-span-2 md:row-span-2',
+        large: 'md:col-span-4 md:row-span-2',
     };
+
+    const hasNotebook = !!NOTEBOOK_MAP[example.id];
 
     return (
         <motion.div
@@ -211,36 +228,47 @@ const GalleryCard = ({ example, index, onClick }: { example: any; index: number;
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.9 }}
-            transition={{ duration: 0.4, delay: index * 0.05 }}
-            whileHover={{ y: -8 }}
-            onClick={onClick}
+            transition={{ duration: 0.5, delay: index * 0.05, type: "spring", stiffness: 200, damping: 25 }}
             className={`
-                relative group cursor-pointer bg-white border-2 border-slate rounded-2xl overflow-hidden shadow-hard hover:shadow-hard-lg transition-all
+                relative group bg-white border-2 border-slate rounded-2xl overflow-hidden shadow-hard hover:shadow-hard-lg transition-all
                 ${sizeClasses[example.size as keyof typeof sizeClasses] || 'md:col-span-1 md:row-span-1'}
             `}
         >
             {/* Preview Area */}
-            <div className="absolute inset-0 bg-slate/5 group-hover:bg-orange/5 transition-colors">
-                {/* Placeholder for GIF/Preview */}
-                <div className="absolute inset-0 flex items-center justify-center opacity-20 group-hover:opacity-40 transition-opacity">
-                    <div className="w-full h-full bg-grid-pattern opacity-10" />
-                    <div className="absolute inset-0 flex items-center justify-center">
-                        <span className="font-mono text-[100px] font-bold text-slate/10 select-none">
-                            {example.id.slice(0, 2).toUpperCase()}
-                        </span>
+            <div className="absolute inset-0 bg-slate/5 group-hover:bg-orange/5 transition-colors overflow-hidden">
+                {example.gifUrl ? (
+                    <img src={example.gifUrl} alt={example.label} className="w-full h-full object-cover" />
+                ) : (
+                    <div className="w-full h-full p-4">
+                        <DynamicWidget
+                            moduleUrl={example.moduleUrl}
+                            initialData={example.initialData}
+                            model={model}
+                        />
                     </div>
-                </div>
+                )}
 
-                {/* Hover Icon */}
-                <div className="absolute top-6 right-6 opacity-0 group-hover:opacity-100 transform translate-y-2 group-hover:translate-y-0 transition-all duration-300">
-                    <div className="bg-orange text-white p-3 rounded-xl shadow-hard-sm">
-                        <SquareArrowOutUpRight className="w-6 h-6" />
+                {/* Hover Overlay for Navigation */}
+                <div className="absolute inset-0 pointer-events-none">
+                    <div className="absolute top-6 right-6 opacity-0 group-hover:opacity-100 transform translate-y-2 group-hover:translate-y-0 transition-all duration-300 pointer-events-auto">
+                        {hasNotebook && (
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onOpen();
+                                }}
+                                className="bg-orange text-white p-3 rounded-xl shadow-hard-sm hover:scale-110 active:scale-95 transition-all"
+                                title="Open in Notebook"
+                            >
+                                <SquareArrowOutUpRight className="w-6 h-6" />
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>
 
-            {/* Content Overlay */}
-            <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-white via-white/90 to-transparent">
+            {/* Content Overlay - Non-interactive part */}
+            <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-white via-white/95 to-transparent pointer-events-none">
                 <div className="flex items-center gap-2 mb-2">
                     {example.categories.map((cat: string) => (
                         <span key={cat} className="text-[9px] font-mono font-bold text-orange uppercase bg-orange/10 px-2 py-0.5 rounded tracking-widest">
