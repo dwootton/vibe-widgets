@@ -251,6 +251,17 @@ class DataLoadTool(Tool):
                         data = pd.DataFrame([source])
                 else:
                     data = pd.DataFrame([source])
+            # 4. List / tuple (records or rows)
+            elif isinstance(source, (list, tuple)):
+                if not source:
+                    data = pd.DataFrame()
+                elif all(isinstance(item, dict) for item in source):
+                    data = pd.DataFrame(source)
+                elif all(isinstance(item, (list, tuple)) for item in source):
+                    data = pd.DataFrame(list(source))
+                else:
+                    # Fallback: single column with raw values
+                    data = pd.DataFrame({"value": list(source)})
             else:
                 return ToolResult(success=False, output={}, error=f"Unsupported data source type: {type(source)}")
 
