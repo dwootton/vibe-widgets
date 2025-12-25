@@ -1,5 +1,5 @@
 import React from 'react';
-import Highlight, { defaultProps, themes } from 'prism-react-renderer';
+import { Highlight, themes } from 'prism-react-renderer';
 
 const CodeBlock = ({ code, language = 'python' }: { code: string; language?: string }) => {
     const normalized = code.trim().replace(/^`+|`+$/g, '');
@@ -7,7 +7,6 @@ const CodeBlock = ({ code, language = 'python' }: { code: string; language?: str
     return (
         <div className="bg-material-bg text-bone rounded-lg border-orange relative overflow-hidden my-2 max-w-full overflow-x-auto">
             <Highlight
-                {...defaultProps}
                 theme={themes.nightOwl}
                 code={normalized}
                 language={language as any}

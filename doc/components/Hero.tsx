@@ -155,10 +155,10 @@ const GlitchSubtitle = () => {
     }, []);
 
     return (
-        <div className="flex items-center gap-3 font-mono text-sm tracking-[0.3em] uppercase text-slate/60">
+        <div className="flex items-center gap-3 font-mono text-sm tracking-[0.3em] uppercase text-slate/60 min-h-[20px]">
             <span className="inline-flex h-2 w-2 rounded-full bg-orange animate-pulse" aria-hidden="true" />
             <span
-                className={`glitch-text ${isGlitching ? 'glitch-active' : ''}`}
+                className={`glitch-text inline-block min-w-[24ch] ${isGlitching ? 'glitch-active' : ''}`}
                 data-text={displayText}
             >
                 {displayText}
@@ -168,8 +168,9 @@ const GlitchSubtitle = () => {
 };
 
 const Hero = () => {
-    const [selectedExample, setSelectedExample] = useState(EXAMPLES[1]);
-    const [generationState, setGenerationState] = useState<'idle' | 'generating' | 'complete'>('complete');
+    const HERO_EXAMPLES = EXAMPLES.filter((ex) => ex.id !== 'tic-tac-toe');
+    const [selectedExampleId, setSelectedExampleId] = useState('');
+    const [generationState, setGenerationState] = useState<'idle' | 'generating' | 'complete'>('idle');
     const [inputText, setInputText] = useState("");
     const [packageVersion, setPackageVersion] = useState<string | null>(null);
     const isMobile = useIsMobile();
@@ -180,14 +181,20 @@ const Hero = () => {
     const simulatorY = useTransform(scrollY, [0, 800], [0, -100]);
     const opacity = useTransform(scrollY, [0, 600], [1, 0]);
 
-    const handleSelect = (example: typeof EXAMPLES[0]) => {
-        setSelectedExample(example);
-        setInputText(example.prompt);
+    const selectedExample = HERO_EXAMPLES.find((ex) => ex.id === selectedExampleId) || null;
+
+    const handleSelect = (exampleId: string) => {
+        const example = HERO_EXAMPLES.find((ex) => ex.id === exampleId) || null;
+        setSelectedExampleId(exampleId);
+        setInputText(example ? example.prompt : '');
         setGenerationState('idle');
     };
 
     const handleRun = (e: React.FormEvent) => {
         e.preventDefault();
+        if (!selectedExample) {
+            return;
+        }
         setGenerationState('generating');
         setTimeout(() => {
             setGenerationState('complete');
@@ -210,9 +217,10 @@ const Hero = () => {
     }, []);
 
     const titleWords = "Build Interfaces for Interactive Exploration.".split(" ");
+    const versionLabel = packageVersion || 'v0.0.0';
 
     const wrapperClasses = `w-full z-0 flex flex-col px-4 md:px-12 max-w-7xl mx-auto ${isMobile ? 'relative pt-24 pb-12 h-auto' : 'sticky top-0 h-screen pt-32 pb-20'} pointer-events-none`;
-    const gridClasses = `grid grid-cols-1 lg:grid-cols-12 gap-10 items-center pointer-events-auto ${isMobile ? 'py-8' : 'h-full'}`;
+    const gridClasses = `grid grid-cols-1 lg:grid-cols-12 gap-10 items-start pointer-events-auto ${isMobile ? 'py-8' : 'h-full'}`;
 
     return (
         <div className={wrapperClasses}>
@@ -223,10 +231,10 @@ const Hero = () => {
                     <motion.div
                         initial={{ opacity: 0, x: -20 }}
                         animate={{ opacity: 1, x: 0 }}
-                        className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-slate/20 bg-bone/80 backdrop-blur-sm w-fit"
+                        className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-slate/20 bg-bone/80 backdrop-blur-sm w-fit min-w-[120px]"
                     >
                         <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                        <span className="text-xs font-mono font-medium tracking-wide uppercase">{`${packageVersion} Live`}</span>
+                        <span className="text-xs font-mono font-medium tracking-wide uppercase">{`${versionLabel} Live`}</span>
                     </motion.div>
 
                     <h1 className="text-4xl md:text-6xl font-display font-bold leading-[0.9] tracking-tighter mix-blend-multiply flex flex-wrap gap-x-4">
@@ -275,14 +283,17 @@ const Hero = () => {
                 </motion.div>
 
                 {/* Right Column */}
-                <motion.div style={isMobile ? undefined : { y: simulatorY }} className={`lg:col-span-6 relative mt-10 lg:mt-0 ${isMobile ? '' : 'pb-32'}`}>
+                <motion.div
+                    style={isMobile ? undefined : { y: simulatorY }}
+                    className={`lg:col-span-6 relative mt-10 lg:mt-0 ${isMobile ? '' : 'pb-32'} min-h-[520px]`}
+                >
                     {!isMobile && <RetroCat />}
 
                     <motion.div
                         initial={{ opacity: 0, scale: isMobile ? 1 : 0.95, rotateY: isMobile ? 0 : 18 }}
                         animate={{ opacity: 1, scale: 1, rotateY: 0 }}
                         transition={{ duration: 1, type: "spring", stiffness: 50 }}
-                        className="relative z-10 bg-bone border-4 border-slate rounded-2xl shadow-hard-lg p-2 flex flex-col gap-0 min-h-[450px] perspective-1000"
+                        className="relative z-10 bg-bone border-4 border-slate rounded-2xl shadow-hard-lg p-2 flex flex-col gap-0 h-[520px] lg:h-[560px] min-h-0 overflow-hidden perspective-1000"
                     >
                         {/* Header */}
                         <div className="bg-slate text-bone p-3 rounded-t-lg flex justify-between items-center">
@@ -300,16 +311,14 @@ const Hero = () => {
                                 <div className="flex flex-col gap-3">
                                     <div className="relative">
                                         <select
-                                            value={selectedExample.id}
+                                            value={selectedExampleId}
                                             onChange={(event) => {
-                                                const nextExample = EXAMPLES.find((ex) => ex.id === event.target.value);
-                                                if (nextExample) {
-                                                    handleSelect(nextExample);
-                                                }
+                                                handleSelect(event.target.value);
                                             }}
                                             className="w-full bg-bone/50 border-2 border-slate/10 rounded py-3 pl-10 pr-10 font-mono text-xs uppercase tracking-widest focus:outline-none focus:border-orange focus:ring-0 transition-all"
                                         >
-                                            {EXAMPLES.map((ex) => (
+                                            <option value="">Select a widget…</option>
+                                            {HERO_EXAMPLES.map((ex) => (
                                                 <option key={ex.id} value={ex.id}>
                                                     {ex.label}
                                                 </option>
@@ -319,28 +328,29 @@ const Hero = () => {
                                             <ChevronDown className="w-4 h-4" />
                                         </div>
                                     </div>
-                                    <div className="relative">
-                                        <input
-                                            type="text"
-                                            value={inputText}
-                                            onChange={(e) => setInputText(e.target.value)}
-                                            placeholder="Describe your visualization..."
-                                            className="w-full bg-bone/50 border-2 border-slate/10 rounded py-3 pl-10 pr-4 font-mono text-sm focus:outline-none focus:border-orange focus:ring-0 transition-all placeholder:opacity-30"
-                                        />
-                                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-orange">
-                                            <Terminal className="w-4 h-4" />
-                                        </div>
+                                <div className="relative">
+                                    <input
+                                        type="text"
+                                        value={inputText ? `vw.create(\"${inputText}\")` : 'Select a widget above'}
+                                        readOnly
+                                        placeholder="Describe your visualization..."
+                                        className={`w-full bg-bone/50 border-2 border-slate/10 rounded py-3 pl-10 pr-4 font-mono text-sm focus:outline-none focus:border-orange focus:ring-0 transition-all placeholder:opacity-30 cursor-default ${inputText ? 'text-slate' : 'text-slate/40 animate-pulse'}`}
+                                    />
+                                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-orange">
+                                        <Terminal className="w-4 h-4" />
                                     </div>
+                                </div>
                                 </div>
                             </form>
                         </div>
 
                         {/* Screen Area */}
-                        <div className="flex-1 bg-[#F2F0E9] relative overflow-hidden rounded-b-lg p-1">
+                        <div className="flex-1 min-h-0 bg-[#F2F0E9] relative overflow-hidden rounded-b-lg p-1">
                             <div className="absolute inset-0 shadow-[inset_0_0_20px_rgba(0,0,0,0.05)] pointer-events-none z-20" />
                             <div className="absolute inset-0 z-0 bg-[linear-gradient(rgba(26,26,26,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(26,26,26,0.05)_1px,transparent_1px)] bg-[size:20px_20px]" />
 
-                            <div className="relative z-10 w-full h-full flex items-center justify-center">
+                            <div className="relative z-10 w-full h-full min-h-0 overflow-hidden">
+                                <div className="h-full min-h-0 overflow-auto overscroll-contain">
                                 <AnimatePresence mode="wait">
                                     {generationState === 'idle' && (
                                         <motion.div
@@ -348,7 +358,7 @@ const Hero = () => {
                                             initial={{ opacity: 0 }}
                                             animate={{ opacity: 1 }}
                                             exit={{ opacity: 0 }}
-                                            className="text-center text-slate/40 font-mono text-sm"
+                                            className="text-center text-slate/40 font-mono text-sm flex flex-col items-center justify-center gap-4 h-full pb-6"
                                         >
                                             <motion.div
                                                 animate={{ scale: [1, 1.1, 1], opacity: [0.3, 0.6, 0.3] }}
@@ -358,8 +368,15 @@ const Hero = () => {
                                                 <Sparkles className="w-8 h-8" />
                                             </motion.div>
                                             READY_TO_SYNTHESIZE
-                                            <br />
-                                            <button onClick={handleRun} className="mt-4 px-6 py-2 bg-orange text-white rounded font-bold text-xs shadow-hard-sm hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all uppercase tracking-widest">Generate</button>
+                                            <motion.button
+                                                type="button"
+                                                onClick={handleRun}
+                                                animate={{ rotate: [0, 0, 2, -2, 0] }}
+                                                transition={{ delay: 2.2, duration: 0.4, repeat: Infinity, repeatDelay: 4 }}
+                                                className="mt-2 px-8 py-4 bg-orange text-white rounded font-bold text-sm shadow-hard hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all uppercase tracking-[0.3em]"
+                                            >
+                                                Generate
+                                            </motion.button>
                                         </motion.div>
                                     )}
 
@@ -388,14 +405,14 @@ const Hero = () => {
                                         </motion.div>
                                     )}
 
-                                    {generationState === 'complete' && (
+                                    {generationState === 'complete' && selectedExample && (
                                         <motion.div
                                             key="complete"
                                             initial={{ opacity: 0, filter: 'blur(10px)' }}
                                             animate={{ opacity: 1, filter: 'blur(0px)' }}
                                             className="w-full h-full bg-white border border-slate/10 shadow-sm rounded overflow-hidden flex flex-col"
                                         >
-                                            <div className="flex-1 p-2 overflow-auto scrollbar-hide">
+                                            <div className="flex-1 p-2 h-full min-h-0">
                                                 <DynamicWidget
                                                     moduleUrl={selectedExample.moduleUrl}
                                                     exampleId={selectedExample.id}
@@ -406,6 +423,7 @@ const Hero = () => {
                                         </motion.div>
                                     )}
                                 </AnimatePresence>
+                                </div>
                             </div>
                         </div>
                     </motion.div>
