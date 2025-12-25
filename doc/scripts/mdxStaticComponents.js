@@ -1,23 +1,23 @@
 import React from 'react';
 
 export const MediaPlaceholder = ({ label, caption }) => (
-  <div className="placeholder">
-    <div className="placeholder-label">{label}</div>
-    <div className="placeholder-caption">{caption}</div>
-  </div>
+  React.createElement('div', { className: 'placeholder' },
+    React.createElement('div', { className: 'placeholder-label' }, label),
+    React.createElement('div', { className: 'placeholder-caption' }, caption)
+  )
 );
 
 export const InstallCommand = ({ command }) => (
-  <pre><code>{command}</code></pre>
+  React.createElement('pre', null,
+    React.createElement('code', null, command)
+  )
 );
 
 export const ExampleNotebook = ({ title }) => (
-  <div className="placeholder">
-    <div className="placeholder-label">Interactive Notebook</div>
-    <div className="placeholder-caption">
-      {title || 'Open the live docs to run this notebook.'}
-    </div>
-  </div>
+  React.createElement('div', { className: 'placeholder' },
+    React.createElement('div', { className: 'placeholder-label' }, 'Interactive Notebook'),
+    React.createElement('div', { className: 'placeholder-caption' }, title || 'Open the live docs to run this notebook.')
+  )
 );
 
 const mdxStaticComponents = {
